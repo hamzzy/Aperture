@@ -1,0 +1,20 @@
+[package]
+name = "aperture-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "WASM filter runtime for Aperture (Phase 3+)"
+
+[dependencies]
+# Workspace dependencies
+anyhow.workspace = true
+thiserror.workspace = true
+wasmtime.workspace = true
+
+# Internal dependencies
+aperture-shared = { path = "../shared" }
+
+# WASM utilities
+wasmtime-wasi = "16.0"

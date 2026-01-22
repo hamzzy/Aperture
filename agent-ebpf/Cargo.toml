@@ -1,0 +1,35 @@
+[package]
+name = "aperture-ebpf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "eBPF programs for Aperture"
+
+[dependencies]
+aya-ebpf = "0.1"
+aya-log-ebpf = "0.1"
+
+[build-dependencies]
+aya-gen = "0.1"
+
+[[bin]]
+name = "cpu-profiler"
+path = "src/cpu_profiler.rs"
+
+[profile.dev]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = true
+panic = "abort"
+incremental = false
+codegen-units = 1
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"

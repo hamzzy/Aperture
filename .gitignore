@@ -1,0 +1,25 @@
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# eBPF
+*.o
+*.ll
+vmlinux.h
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+flamegraph.svg
+profile.data
+*.prof

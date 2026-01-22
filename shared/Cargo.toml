@@ -1,0 +1,26 @@
+[package]
+name = "aperture-shared"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared types and utilities for Aperture"
+
+[dependencies]
+# Workspace dependencies
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Time handling
+chrono = "0.4"
+
+# Cap'n Proto for wire protocol (Phase 5+)
+capnp = { version = "0.18", optional = true }
+
+[features]
+default = []
+wire-protocol = ["capnp"]

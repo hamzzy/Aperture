@@ -1,0 +1,50 @@
+[package]
+name = "aperture-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Profiling agent for Aperture"
+
+[[bin]]
+name = "aperture-agent"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+aya = { workspace = true, features = ["async_tokio"] }
+aya-log.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "fs"] }
+anyhow.workspace = true
+thiserror.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Internal dependencies
+aperture-shared = { path = "../shared" }
+
+# Symbol resolution
+blazesym = "0.2"
+symbolic = "12.0"
+symbolic-demangle = "12.0"
+
+# System interaction
+libc = "0.2"
+nix = { version = "0.27", features = ["process", "signal", "fs"] }
+
+# Flamegraph generation
+inferno = "0.11"
+
+# Error reporting
+color-eyre = "0.6"
+
+# Byte manipulation
+bytes = "1.5"
+
+[dev-dependencies]
+tempfile = "3.8"
+tokio-test = "0.4"
