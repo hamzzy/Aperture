@@ -201,19 +201,6 @@ This document outlines the development phases and milestones for the Aperture pr
 - Interactive visualizations
 - Dashboard capabilities
 
-## Timeline
-
-**Note**: These are rough estimates and may change based on development progress and priorities.
-
-- **Phase 1**: Q1 2024 (3-4 months)
-- **Phase 2**: Q2 2024 (2-3 months)
-- **Phase 3**: Q2-Q3 2024 (2 months)
-- **Phase 4**: Q3 2024 (2-3 months)
-- **Phase 5**: Q3-Q4 2024 (2 months)
-- **Phase 6**: Q4 2024 (2 months)
-- **Phase 7**: Q4 2024 - Q1 2025 (3 months)
-- **Phase 8**: Q1-Q2 2025 (3 months)
-
 ## Success Metrics
 
 - **Phase 1**: <1% CPU overhead, accurate flamegraphs
