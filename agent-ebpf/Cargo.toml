@@ -11,9 +11,6 @@ description = "eBPF programs for Aperture"
 aya-ebpf = "0.1"
 aya-log-ebpf = "0.1"
 
-[build-dependencies]
-aya-gen = "0.1"
-
 [[bin]]
 name = "cpu-profiler"
 path = "src/cpu_profiler.rs"

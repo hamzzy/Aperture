@@ -31,7 +31,7 @@ static STACKS: BpfStackTrace = BpfStackTrace::with_max_entries(10000, 0);
 
 /// Per-CPU event buffer for sending samples to userspace
 #[map]
-static EVENTS: PerfEventArray<SampleEvent> = PerfEventArray::with_max_entries(0, 0);
+static EVENTS: PerfEventArray = PerfEventArray::new(0);
 
 /// Per-process configuration (placeholder for Phase 2 filtering)
 #[map]

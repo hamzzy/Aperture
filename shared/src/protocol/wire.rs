@@ -9,7 +9,7 @@ use anyhow::Result;
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Wire message envelope
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Message {
     pub version: u32,
     pub sequence: u64,

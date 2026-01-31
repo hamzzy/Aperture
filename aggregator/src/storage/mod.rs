@@ -4,7 +4,7 @@ pub mod clickhouse;
 pub mod scylla;
 
 use anyhow::Result;
-use shared::types::profile::Profile;
+use aperture_shared::types::profile::Profile;
 
 /// Storage backend trait
 pub trait Storage: Send + Sync {

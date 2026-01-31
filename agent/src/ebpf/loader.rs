@@ -3,55 +3,102 @@
 //! Loads and attaches eBPF programs to the kernel
 
 use anyhow::{Context, Result};
-use aya::Bpf;
+use aya::{
+    programs::{links::FdLink, perf_event::{PerfEventScope, PerfTypeId, SamplePolicy}, PerfEvent},
+    Bpf,
+};
+use std::sync::Arc;
 use tracing::{info, warn};
+
+/// Storage for perf event links to keep them alive
+pub struct PerfEventLinks {
+    links: Vec<FdLink>,
+}
+
+impl PerfEventLinks {
+    pub fn new() -> Self {
+        Self { links: Vec::new() }
+    }
+
+    pub fn add(&mut self, link: FdLink) {
+        self.links.push(link);
+    }
+}
 
 /// Load the CPU profiler eBPF program
 pub fn load_cpu_profiler() -> Result<Bpf> {
     info!("Loading CPU profiler eBPF program");
 
-    // TODO Phase 1: Implement eBPF program loading
-    // 1. Load compiled eBPF bytecode from embedded binary or file
-    // 2. Create Bpf object using aya::Bpf::load()
-    // 3. Verify program loaded successfully
-    // 4. Return Bpf handle for further use
+    // Load the compiled eBPF bytecode
+    // This will be embedded from the agent-ebpf build output
+    #[cfg(debug_assertions)]
+    let bpf_data = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../target/bpfel-unknown-none/debug/cpu-profiler"
+    ));
 
-    warn!("TODO: Implement eBPF program loading");
-    warn!("This requires building the agent-ebpf crate and embedding the bytecode");
+    #[cfg(not(debug_assertions))]
+    let bpf_data = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../target/bpfel-unknown-none/release/cpu-profiler"
+    ));
 
-    // Placeholder implementation
-    Err(anyhow::anyhow!(
-        "eBPF loading not yet implemented - see loader.rs"
-    ))
+    // Load the eBPF program
+    let bpf = Bpf::load(bpf_data).context("Failed to load eBPF program")?;
+
+    info!("Successfully loaded CPU profiler eBPF program");
+    Ok(bpf)
 }
 
 /// Attach CPU profiler to perf events
-pub fn attach_cpu_profiler(_bpf: &mut Bpf, _sample_rate_hz: u64) -> Result<()> {
-    info!("Attaching CPU profiler to perf events");
+///
+/// Attaches the eBPF program to perf events on all CPUs at the specified sample rate
+pub fn attach_cpu_profiler(bpf: &mut Bpf, sample_rate_hz: u64) -> Result<PerfEventLinks> {
+    info!(
+        "Attaching CPU profiler to perf events at {} Hz",
+        sample_rate_hz
+    );
 
-    // TODO Phase 1: Implement perf event attachment
-    // 1. Get the PerfEvent program from Bpf
-    // 2. For each CPU core:
-    //    - Create perf event with PERF_TYPE_SOFTWARE / PERF_COUNT_SW_CPU_CLOCK
-    //    - Set sample period based on sample_rate_hz
-    //    - Attach eBPF program to the perf event
-    // 3. Store perf event FDs for cleanup
+    let program: &mut PerfEvent = bpf
+        .program_mut("cpu_profiler")
+        .context("Failed to find cpu_profiler program")?
+        .try_into()
+        .context("Program is not a PerfEvent")?;
 
-    warn!("TODO: Implement perf event attachment");
+    // Load the program into the kernel
+    program.load().context("Failed to load perf event program")?;
 
-    Ok(())
+    let mut links = PerfEventLinks::new();
+
+    // Get number of CPUs
+    let num_cpus = num_cpus::get();
+    info!("Attaching to {} CPU cores", num_cpus);
+
+    // Attach to each CPU
+    for cpu_id in 0..num_cpus {
+        // Create perf event for CPU profiling
+        // Using PERF_TYPE_SOFTWARE with PERF_COUNT_SW_CPU_CLOCK
+        let link = program
+            .attach(
+                PerfTypeId::Software,
+                0, // PERF_COUNT_SW_CPU_CLOCK = 0 in perf_event.h
+                PerfEventScope::AllProcessesOneCpu { cpu: cpu_id as u32 },
+                SamplePolicy::Frequency(sample_rate_hz),
+            )
+            .with_context(|| format!("Failed to attach to CPU {}", cpu_id))?;
+
+        links.add(link);
+    }
+
+    info!("Successfully attached to all {} CPUs", num_cpus);
+    Ok(links)
 }
 
 /// Detach and cleanup eBPF programs
-pub fn cleanup(_bpf: &mut Bpf) -> Result<()> {
-    info!("Cleaning up eBPF programs");
-
-    // TODO Phase 1: Implement cleanup
-    // 1. Detach all perf events
-    // 2. Unload eBPF program
-    // 3. Close file descriptors
-
-    Ok(())
+pub fn cleanup(links: PerfEventLinks) {
+    info!("Cleaning up {} perf event links", links.links.len());
+    // Links are automatically cleaned up when dropped
+    drop(links);
 }
 
 #[cfg(test)]

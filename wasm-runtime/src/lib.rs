@@ -7,7 +7,7 @@ pub mod filter_api;
 pub mod runtime;
 
 use anyhow::Result;
-use shared::types::events::ProfileEvent;
+use aperture_shared::types::events::ProfileEvent;
 
 /// WASM filter trait
 pub trait WasmFilter {

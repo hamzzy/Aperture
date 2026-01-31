@@ -45,6 +45,9 @@ color-eyre = "0.6"
 # Byte manipulation
 bytes = "1.5"
 
+# CPU detection
+num_cpus = "1.16"
+
 [dev-dependencies]
 tempfile = "3.8"
 tokio-test = "0.4"
