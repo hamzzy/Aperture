@@ -3,122 +3,88 @@
 
 //! CPU profiler eBPF program
 //!
-//! This program samples stack traces from running processes at a configurable
-//! frequency using the perf event subsystem.
-//!
-//! Implementation strategy:
-//! 1. Attach to perf events (CPU cycles or timer-based)
-//! 2. On each sample, capture stack trace using bpf_get_stackid()
-//! 3. Store stack trace in a BPF map for userspace to read
-//! 4. Include process context (PID, TID, CPU, timestamp)
+//! Captures stack traces and sends sample events to userspace via perf buffer.
 
 use aya_ebpf::{
-    macros::{map, perf_event},
-    maps::{HashMap, PerfEventArray, StackTrace as BpfStackTrace},
-    programs::PerfEventContext,
+    helpers::{bpf_get_current_comm, bpf_get_smp_processor_id, bpf_ktime_get_ns},
+    macros::{kprobe, map},
+    maps::{PerfEventArray, StackTrace},
+    programs::ProbeContext,
+    EbpfContext,
 };
-use aya_log_ebpf::info;
 
-// TODO: Import generated vmlinux types
-// use crate::vmlinux::*;
+#[no_mangle]
+#[link_section = "license"]
+pub static LICENSE: [u8; 4] = *b"GPL\0";
 
-/// Maximum number of stack frames to capture
 const MAX_STACK_DEPTH: u32 = 127;
+
+/// Perf buffer for sending sample events to userspace
+#[map]
+static EVENTS: PerfEventArray<SampleEvent> = PerfEventArray::new(0);
 
 /// Stack trace storage
 #[map]
-static STACKS: BpfStackTrace = BpfStackTrace::with_max_entries(10000, 0);
-
-/// Per-CPU event buffer for sending samples to userspace
-#[map]
-static EVENTS: PerfEventArray = PerfEventArray::new(0);
-
-/// Per-process configuration (placeholder for Phase 2 filtering)
-#[map]
-static CONFIG: HashMap<u32, ProfileConfig> = HashMap::with_max_entries(1024, 0);
+static STACKS: StackTrace = StackTrace::with_max_entries(MAX_STACK_DEPTH * 256, 0);
 
 /// Sample event sent to userspace
 #[repr(C)]
 pub struct SampleEvent {
-    /// Timestamp in nanoseconds
     pub timestamp: u64,
-    /// Process ID
     pub pid: u32,
-    /// Thread ID
     pub tid: u32,
-    /// CPU core
     pub cpu: u32,
-    /// User stack ID (-1 if failed)
     pub user_stack_id: i32,
-    /// Kernel stack ID (-1 if failed)
     pub kernel_stack_id: i32,
-    /// Process name
     pub comm: [u8; 16],
 }
 
-/// Configuration for profiling (Phase 2+)
-#[repr(C)]
-pub struct ProfileConfig {
-    pub enabled: u32,
-    pub sample_period: u64,
-}
-
-/// Main entry point for CPU profiling
-///
-/// This function is called on each perf event trigger (e.g., CPU cycle or timer).
-#[perf_event]
-pub fn cpu_profiler(ctx: PerfEventContext) -> u32 {
-    match try_cpu_profiler(ctx) {
-        Ok(()) => 0,
+#[kprobe]
+pub fn cpu_profiler(ctx: ProbeContext) -> u32 {
+    match try_cpu_profiler(&ctx) {
+        Ok(ret) => ret,
         Err(_) => 1,
     }
 }
 
-fn try_cpu_profiler(ctx: PerfEventContext) -> Result<(), i64> {
-    // Get current process context
-    let pid = ctx.pid();
-    let tid = ctx.tgid();
+#[inline(always)]
+fn try_cpu_profiler(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid_tgid = ctx.pid();
+    let tgid = ctx.tgid();
 
-    // TODO Phase 2: Check if this PID is enabled in CONFIG map
-    // For Phase 1, profile everything
-
-    // Capture user-space stack trace
-    let user_stack_id = unsafe {
-        STACKS.get_stackid(&ctx, aya_ebpf::bindings::BPF_F_USER_STACK.into())
-    };
-
-    // Capture kernel-space stack trace
-    let kernel_stack_id = unsafe { STACKS.get_stackid(&ctx, 0) };
-
-    // Get process name
-    let mut comm: [u8; 16] = [0; 16];
-    if let Ok(name) = ctx.command() {
-        let len = name.len().min(16);
-        comm[..len].copy_from_slice(&name[..len]);
+    // Skip kernel threads (pid 0)
+    if tgid == 0 {
+        return Ok(0);
     }
 
-    // Create sample event
+    // Get timestamp and CPU
+    let timestamp = unsafe { bpf_ktime_get_ns() };
+    let cpu = unsafe { bpf_get_smp_processor_id() };
+
+    // Capture kernel stack trace
+    let kernel_stack_id = unsafe { STACKS.get_stackid(ctx, 0) }.unwrap_or(-1);
+
+    // Capture user stack trace
+    let user_stack_id =
+        unsafe { STACKS.get_stackid(ctx, aya_ebpf::bindings::BPF_F_USER_STACK as u64) }
+            .unwrap_or(-1);
+
+    // Get process name
+    let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
+
     let event = SampleEvent {
-        timestamp: unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() },
-        pid,
-        tid,
-        cpu: ctx.cpu(),
-        user_stack_id: user_stack_id.unwrap_or(-1) as i32,
-        kernel_stack_id: kernel_stack_id.unwrap_or(-1) as i32,
+        timestamp,
+        pid: tgid,
+        tid: pid_tgid,
+        cpu,
+        user_stack_id: user_stack_id as i32,
+        kernel_stack_id: kernel_stack_id as i32,
         comm,
     };
 
-    // Send event to userspace
-    unsafe {
-        EVENTS.output(&ctx, &event, 0);
-    }
+    EVENTS.output(ctx, &event, 0);
 
-    info!(
-        &ctx,
-        "Sample captured: pid={} tid={} cpu={}", pid, tid, event.cpu
-    );
-
-    Ok(())
+    Ok(0)
 }
 
 #[panic_handler]

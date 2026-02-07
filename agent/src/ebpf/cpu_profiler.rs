@@ -4,12 +4,13 @@
 
 use anyhow::{Context, Result};
 use aya::{
-    maps::{AsyncPerfEventArray, StackTraceMap},
+    maps::Map,
     Bpf,
 };
 use tracing::{info, warn};
 
 use super::loader::{self, PerfEventLinks};
+use crate::collector::cpu::SampleEvent;
 
 /// CPU profiler manager
 pub struct CpuProfiler {
@@ -67,28 +68,9 @@ impl CpuProfiler {
         Ok(())
     }
 
-    /// Get the perf event array for reading samples
-    pub fn get_events(&mut self) -> Result<AsyncPerfEventArray<'_>> {
-        let events: AsyncPerfEventArray<_> = self
-            .bpf
-            .take_map("EVENTS")
-            .context("Failed to get EVENTS map")?
-            .try_into()
-            .context("Map is not a PerfEventArray")?;
-
-        Ok(events)
-    }
-
-    /// Get the stack trace map for reading stack traces
-    pub fn get_stacks(&mut self) -> Result<StackTraceMap<'_>> {
-        let stacks: StackTraceMap<_> = self
-            .bpf
-            .map("STACKS")
-            .context("Failed to get STACKS map")?
-            .try_into()
-            .context("Map is not a StackTraceMap")?;
-
-        Ok(stacks)
+    /// Get mutable reference to the BPF object for map access
+    pub fn bpf_mut(&mut self) -> &mut Bpf {
+        &mut self.bpf
     }
 
     /// Check if the profiler is currently running

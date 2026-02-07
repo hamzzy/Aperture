@@ -2,11 +2,29 @@
 //!
 //! Collects CPU profiling samples from eBPF and builds profile data
 
-use anyhow::Result;
-use shared::types::events::CpuSample;
-use shared::types::profile::Profile;
+use anyhow::{Context, Result};
+use aperture_shared::types::events::CpuSample;
+use aperture_shared::types::profile::{Profile, Stack};
+use aya::maps::StackTraceMap;
+use bytes::BytesMut;
 use std::collections::HashMap;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+/// Raw sample event from eBPF (must match agent-ebpf/src/cpu_profiler.rs)
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct SampleEvent {
+    pub timestamp: u64,
+    pub pid: u32,
+    pub tid: u32,
+    pub cpu: u32,
+    pub user_stack_id: i32,
+    pub kernel_stack_id: i32,
+    pub comm: [u8; 16],
+}
+
+// Implement traits for reading from perf buffer
+unsafe impl aya::Pod for SampleEvent {}
 
 /// CPU event collector
 pub struct CpuCollector {
@@ -25,7 +43,7 @@ impl CpuCollector {
     pub fn new(sample_period_ns: u64) -> Self {
         Self {
             samples: Vec::new(),
-            start_time: shared::utils::time::system_time_nanos(),
+            start_time: aperture_shared::utils::time::system_time_nanos(),
             sample_period_ns,
         }
     }
@@ -39,20 +57,98 @@ impl CpuCollector {
         self.samples.push(sample);
     }
 
+    /// Process a raw eBPF event and convert to CpuSample
+    pub fn process_event(
+        &mut self,
+        event: &SampleEvent,
+        stacks: &StackTraceMap<aya::maps::MapData>,
+    ) -> Result<()> {
+        // Convert comm bytes to string
+        let comm = std::str::from_utf8(&event.comm)
+            .unwrap_or("<unknown>")
+            .trim_end_matches('\0')
+            .to_string();
+
+        // Get user-space stack trace
+        let user_stack = if event.user_stack_id >= 0 {
+            match stacks.get(&(event.user_stack_id as u32), 0) {
+                Ok(trace) => {
+                    let frames: Vec<u64> = trace.frames().iter().map(|f| f.ip).collect();
+                    frames
+                }
+                Err(e) => {
+                    debug!("Failed to get user stack {}: {}", event.user_stack_id, e);
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        // Get kernel-space stack trace
+        let kernel_stack = if event.kernel_stack_id >= 0 {
+            match stacks.get(&(event.kernel_stack_id as u32), 0) {
+                Ok(trace) => {
+                    let frames: Vec<u64> = trace.frames().iter().map(|f| f.ip).collect();
+                    frames
+                }
+                Err(e) => {
+                    debug!("Failed to get kernel stack {}: {}", event.kernel_stack_id, e);
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        let sample = CpuSample {
+            timestamp: event.timestamp,
+            pid: event.pid as i32,
+            tid: event.tid as i32,
+            cpu_id: event.cpu,
+            user_stack,
+            kernel_stack,
+            comm,
+        };
+
+        self.add_sample(sample);
+        Ok(())
+    }
+
     /// Build aggregated profile from collected samples
     pub fn build_profile(&self) -> Result<Profile> {
         info!("Building profile from {} samples", self.samples.len());
 
-        let end_time = shared::utils::time::system_time_nanos();
+        let end_time = aperture_shared::utils::time::system_time_nanos();
 
         let mut profile = Profile::new(self.start_time, end_time, self.sample_period_ns);
 
-        // TODO Phase 1: Implement profile building
-        // 1. For each sample, create a Stack from the stack trace
-        // 2. Add the stack to the profile
-        // 3. Handle deduplication (same stack multiple times)
+        // Build profile by aggregating stacks
+        for sample in &self.samples {
+            // Combine kernel and user stacks
+            let mut combined_ips = Vec::new();
 
-        info!("Profile built: {} total samples", profile.total_samples);
+            // Add user stack first (innermost frames)
+            combined_ips.extend_from_slice(&sample.user_stack);
+
+            // Add kernel stack (outer frames)
+            combined_ips.extend_from_slice(&sample.kernel_stack);
+
+            // Skip empty stacks
+            if combined_ips.is_empty() {
+                continue;
+            }
+
+            // Create stack and add to profile
+            let stack = Stack::from_ips(&combined_ips);
+            profile.add_sample(stack);
+        }
+
+        info!(
+            "Profile built: {} total samples, {} unique stacks",
+            profile.total_samples,
+            profile.samples.len()
+        );
 
         Ok(profile)
     }

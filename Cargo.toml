@@ -28,8 +28,8 @@ tokio = { version = "1.35", features = ["full"] }
 tokio-util = "0.7"
 
 # eBPF
-aya = { version = "0.12", features = ["async_tokio"] }
-aya-log = "0.2"
+aya = { version = "0.13.1", features = ["async_tokio"] }
+aya-log = "0.2.1"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

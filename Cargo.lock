@@ -142,7 +142,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "aperture-shared",
- "aya 0.12.0",
+ "aya",
  "aya-log",
  "blazesym",
  "bytes",
@@ -367,30 +367,12 @@ dependencies = [
 
 [[package]]
 name = "aya"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90eea657cc8028447cbda5068f4e10c4fadba0131624f4f7dd1a9c46ffc8d81f"
-dependencies = [
- "assert_matches",
- "aya-obj 0.1.0",
- "bitflags 2.10.0",
- "bytes",
- "lazy_static",
- "libc",
- "log",
- "object 0.32.2",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
-name = "aya"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d18bc4e506fbb85ab7392ed993a7db4d1a452c71b75a246af4a80ab8c9d2dd50"
 dependencies = [
  "assert_matches",
- "aya-obj 0.2.1",
+ "aya-obj",
  "bitflags 2.10.0",
  "bytes",
  "libc",
@@ -460,7 +442,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b600d806c1d07d3b81ab5f4a2a95fd80f479a0d3f1d68f29064d660865f85f02"
 dependencies = [
- "aya 0.13.1",
+ "aya",
  "aya-log-common",
  "bytes",
  "log",
@@ -508,20 +490,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14b102eb5c88c9aa0b49102d3fbcee08ecb0dfa81014f39b373311de7a7032cb"
 dependencies = [
  "aya-log-common",
-]
-
-[[package]]
-name = "aya-obj"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c02024a307161cf3d1f052161958fd13b1a33e3e038083e58082c0700fdab85"
-dependencies = [
- "bytes",
- "core-error",
- "hashbrown 0.14.5",
- "log",
- "object 0.32.2",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1748,7 +1716,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
  "ahash 0.8.12",
- "allocator-api2",
  "serde",
 ]
 

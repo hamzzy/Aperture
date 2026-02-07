@@ -4,15 +4,17 @@
 
 use anyhow::{Context, Result};
 use aya::{
-    programs::{links::FdLink, perf_event::{PerfEventScope, PerfTypeId, SamplePolicy}, PerfEvent},
+    programs::{
+        KProbe,
+        kprobe::KProbeLinkId,
+    },
     Bpf,
 };
-use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 
-/// Storage for perf event links to keep them alive
+/// Storage for kprobe links to keep them alive
 pub struct PerfEventLinks {
-    links: Vec<FdLink>,
+    links: Vec<KProbeLinkId>,
 }
 
 impl PerfEventLinks {
@@ -20,77 +22,92 @@ impl PerfEventLinks {
         Self { links: Vec::new() }
     }
 
-    pub fn add(&mut self, link: FdLink) {
+    pub fn add(&mut self, link: KProbeLinkId) {
         self.links.push(link);
     }
 }
 
 /// Load the CPU profiler eBPF program
 pub fn load_cpu_profiler() -> Result<Bpf> {
+    use aya::BpfLoader;
+
     info!("Loading CPU profiler eBPF program");
 
-    // Load the compiled eBPF bytecode
-    // This will be embedded from the agent-ebpf build output
+    // For debugging, try loading from file first
     #[cfg(debug_assertions)]
-    let bpf_data = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../target/bpfel-unknown-none/debug/cpu-profiler"
-    ));
+    {
+        use std::path::PathBuf;
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("../target/bpfel-unknown-none/debug/cpu-profiler");
 
+        info!("Loading eBPF from file: {:?}", path);
+
+        if path.exists() {
+            let bpf = BpfLoader::new()
+                .load_file(&path)
+                .context("Failed to load eBPF program from file")?;
+            info!("Successfully loaded CPU profiler eBPF program from file");
+            return Ok(bpf);
+        } else {
+            anyhow::bail!("eBPF program file not found: {:?}", path);
+        }
+    }
+
+    // For release builds, embed the bytecode
     #[cfg(not(debug_assertions))]
-    let bpf_data = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../target/bpfel-unknown-none/release/cpu-profiler"
-    ));
+    {
+        let bpf_data = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../target/bpfel-unknown-none/release/cpu-profiler"
+        ));
 
-    // Load the eBPF program
-    let bpf = Bpf::load(bpf_data).context("Failed to load eBPF program")?;
-
-    info!("Successfully loaded CPU profiler eBPF program");
-    Ok(bpf)
+        // Load the eBPF program
+        let bpf = BpfLoader::new()
+            .allow_unsupported_maps()
+            .load(bpf_data)
+            .context("Failed to load eBPF program")?;
+        info!("Successfully loaded CPU profiler eBPF program");
+        Ok(bpf)
+    }
 }
 
-/// Attach CPU profiler to perf events
+/// Attach CPU profiler as kprobe
 ///
-/// Attaches the eBPF program to perf events on all CPUs at the specified sample rate
-pub fn attach_cpu_profiler(bpf: &mut Bpf, sample_rate_hz: u64) -> Result<PerfEventLinks> {
-    info!(
-        "Attaching CPU profiler to perf events at {} Hz",
-        sample_rate_hz
-    );
+/// Attaches the eBPF program as a kprobe on finish_task_switch
+pub fn attach_cpu_profiler(bpf: &mut Bpf, _sample_rate_hz: u64) -> Result<PerfEventLinks> {
+    use tracing::debug;
 
-    let program: &mut PerfEvent = bpf
+    info!("Attaching CPU profiler as kprobe on do_sys_openat2");
+
+    // Debug: List all programs in the BPF object
+    debug!("Available programs:");
+    for (name, program) in bpf.programs() {
+        debug!("  - {} (type: {:?})", name, program.prog_type());
+    }
+
+    let program: &mut KProbe = bpf
         .program_mut("cpu_profiler")
         .context("Failed to find cpu_profiler program")?
         .try_into()
-        .context("Program is not a PerfEvent")?;
+        .context("Program is not a KProbe")?;
 
     // Load the program into the kernel
-    program.load().context("Failed to load perf event program")?;
+    info!("Loading program into kernel");
+    program.load().context("Failed to load kprobe program")?;
+    info!("Program loaded successfully");
 
     let mut links = PerfEventLinks::new();
 
-    // Get number of CPUs
-    let num_cpus = num_cpus::get();
-    info!("Attaching to {} CPU cores", num_cpus);
+    // Attach to do_sys_openat2 kernel function for testing
+    // vfs_read doesn't fire on OrbStack kernels, but do_sys_openat2 does
+    info!("Attaching to do_sys_openat2");
+    let link = program
+        .attach("do_sys_openat2", 0)
+        .context("Failed to attach to do_sys_openat2")?;
 
-    // Attach to each CPU
-    for cpu_id in 0..num_cpus {
-        // Create perf event for CPU profiling
-        // Using PERF_TYPE_SOFTWARE with PERF_COUNT_SW_CPU_CLOCK
-        let link = program
-            .attach(
-                PerfTypeId::Software,
-                0, // PERF_COUNT_SW_CPU_CLOCK = 0 in perf_event.h
-                PerfEventScope::AllProcessesOneCpu { cpu: cpu_id as u32 },
-                SamplePolicy::Frequency(sample_rate_hz),
-            )
-            .with_context(|| format!("Failed to attach to CPU {}", cpu_id))?;
+    links.add(link);
+    info!("Successfully attached kprobe");
 
-        links.add(link);
-    }
-
-    info!("Successfully attached to all {} CPUs", num_cpus);
     Ok(links)
 }
 

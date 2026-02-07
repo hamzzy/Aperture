@@ -3,7 +3,7 @@
 //! Exports profile data in JSON format for further analysis
 
 use anyhow::{Context, Result};
-use shared::types::profile::Profile;
+use aperture_shared::types::profile::Profile;
 use std::fs::File;
 use std::io::BufWriter;
 use tracing::info;
