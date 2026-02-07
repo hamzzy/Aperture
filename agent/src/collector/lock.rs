@@ -3,7 +3,7 @@
 //! Collects lock contention events from eBPF and builds profile data
 
 use anyhow::Result;
-use aperture_shared::types::events::LockEvent;
+use aperture_shared::types::events::{LockEvent, ProfileEvent};
 use aperture_shared::types::profile::{LockProfile, Stack};
 use aya::maps::StackTraceMap;
 use tracing::{debug, info};
@@ -127,6 +127,11 @@ impl LockCollector {
         );
 
         Ok(profile)
+    }
+
+    /// Events for pushing to the aggregator (Phase 5+)
+    pub fn profile_events(&self) -> Vec<ProfileEvent> {
+        self.events.iter().cloned().map(ProfileEvent::Lock).collect()
     }
 }
 

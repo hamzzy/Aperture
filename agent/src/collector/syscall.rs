@@ -3,7 +3,7 @@
 //! Collects syscall events from eBPF and builds profile data
 
 use anyhow::Result;
-use aperture_shared::types::events::SyscallEvent;
+use aperture_shared::types::events::{ProfileEvent, SyscallEvent};
 use aperture_shared::types::profile::SyscallProfile;
 use aperture_shared::utils::syscalls::syscall_name;
 use tracing::info;
@@ -91,6 +91,15 @@ impl SyscallCollector {
         );
 
         Ok(profile)
+    }
+
+    /// Events for pushing to the aggregator (Phase 5+)
+    pub fn profile_events(&self) -> Vec<ProfileEvent> {
+        self.events
+            .iter()
+            .cloned()
+            .map(ProfileEvent::Syscall)
+            .collect()
     }
 }
 

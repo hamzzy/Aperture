@@ -41,6 +41,10 @@ struct Args {
     /// Verbose logging
     #[arg(short, long)]
     verbose: bool,
+
+    /// Push collected data to this aggregator gRPC URL (e.g. http://127.0.0.1:50051)
+    #[arg(long)]
+    aggregator: Option<String>,
 }
 
 #[tokio::main]
@@ -71,6 +75,7 @@ async fn main() -> Result<()> {
         output_path: args.output.clone(),
         json_output: args.json.clone(),
         filter_path: None,
+        aggregator_url: args.aggregator,
     };
 
     // Check if running as root (required for eBPF)

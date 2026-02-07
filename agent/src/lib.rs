@@ -13,7 +13,42 @@ pub use config::Config;
 pub use config::ProfileMode;
 
 use anyhow::{Context, Result};
+use aperture_shared::protocol::wire::Message;
+use aperture_shared::types::events::ProfileEvent;
 use tracing::{debug, info};
+
+/// Push collected events to the aggregator (Phase 5+).
+async fn push_to_aggregator(
+    url: &str,
+    agent_id: &str,
+    sequence: u64,
+    events: &[ProfileEvent],
+) -> Result<()> {
+    use aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient;
+    use aperture_aggregator::server::grpc::proto::PushRequest;
+    use tonic::transport::Channel;
+
+    if events.is_empty() {
+        return Ok(());
+    }
+    let message = Message::new(sequence, events.to_vec());
+    let payload = message.to_bytes()?;
+    let mut client = AggregatorClient::<Channel>::connect(url.to_string())
+        .await
+        .context("Failed to connect to aggregator")?;
+    let req = PushRequest {
+        agent_id: agent_id.to_string(),
+        sequence,
+        payload,
+    };
+    let res = client.push(tonic::Request::new(req)).await?;
+    let inner = res.into_inner();
+    if !inner.ok {
+        anyhow::bail!("Aggregator push failed: {}", inner.error);
+    }
+    info!("Pushed {} events to aggregator at {}", events.len(), url);
+    Ok(())
+}
 
 /// Run the profiler with the given configuration.
 pub async fn run_profiler(config: Config) -> Result<()> {
@@ -157,6 +192,7 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
     let collector = Arc::try_unwrap(collector)
         .map_err(|_| anyhow::anyhow!("Failed to unwrap collector Arc"))?
         .into_inner();
+    let events = collector.profile_events();
     let mut profile = collector.build_profile()?;
 
     // 7. Symbolize & Output
@@ -168,6 +204,10 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
         if let Some(json_path) = &config.json_output {
             output::json::generate_json(&profile, json_path)?;
         }
+    }
+
+    if let Some(ref url) = config.aggregator_url {
+        push_to_aggregator(url, "agent", 1, &events).await?;
     }
 
     Ok(())
@@ -249,6 +289,7 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
     let collector = Arc::try_unwrap(collector)
         .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
         .into_inner();
+    let events = collector.profile_events();
     let mut profile = collector.build_profile()?;
 
     if profile.total_events > 0 {
@@ -259,6 +300,10 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
         if let Some(json_path) = &config.json_output {
             output::json::generate_lock_json(&profile, json_path)?;
         }
+    }
+
+    if let Some(ref url) = config.aggregator_url {
+        push_to_aggregator(url, "agent", 1, &events).await?;
     }
 
     Ok(())
@@ -335,6 +380,7 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
     let collector = Arc::try_unwrap(collector)
         .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
         .into_inner();
+    let events = collector.profile_events();
     let profile = collector.build_profile()?;
 
     if profile.total_events > 0 {
@@ -343,6 +389,10 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
         if let Some(json_path) = &config.json_output {
             output::json::generate_syscall_json(&profile, json_path)?;
         }
+    }
+
+    if let Some(ref url) = config.aggregator_url {
+        push_to_aggregator(url, "agent", 1, &events).await?;
     }
 
     Ok(())

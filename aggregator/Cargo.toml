@@ -43,3 +43,8 @@ protoc-bin-vendored = "2"
 default = []
 clickhouse-storage = ["dep:clickhouse", "dep:base64"]
 scylla-storage = ["scylla"]
+
+[dev-dependencies]
+aperture-shared = { path = "../shared", features = ["wire-protocol"] }
+tokio = { workspace = true }
+tonic = "0.11"

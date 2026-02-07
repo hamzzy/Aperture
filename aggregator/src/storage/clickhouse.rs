@@ -34,15 +34,19 @@ pub struct ClickHouseStore {
 
 impl ClickHouseStore {
     /// Connect and ensure the table exists.
+    /// Uses APERTURE_CLICKHOUSE_PASSWORD env var if set (e.g. for Docker E2E).
     pub async fn new(endpoint: &str, database: &str) -> Result<Self> {
-        let client = Client::default()
+        let mut client = Client::default()
             .with_url(endpoint)
             .with_database(database)
             .with_option("connect_timeout", "10")
             .with_option("request_timeout", "30");
+        if let Ok(password) = std::env::var("APERTURE_CLICKHOUSE_PASSWORD") {
+            client = client.with_user("default").with_password(password);
+        }
 
         let store = Self {
-            client: client.clone(),
+            client,
             table: TABLE_NAME.to_string(),
         };
 

@@ -49,6 +49,9 @@ pub struct Config {
 
     /// Optional WASM filter path
     pub filter_path: Option<PathBuf>,
+
+    /// Optional aggregator gRPC URL (e.g. http://127.0.0.1:50051) to push profile data
+    pub aggregator_url: Option<String>,
 }
 
 impl Config {
@@ -95,6 +98,7 @@ mod tests {
             output_path: "test.svg".to_string(),
             json_output: None,
             filter_path: None,
+            aggregator_url: None,
         };
 
         assert_eq!(config.sample_period_ns(), 10_000_000);
@@ -110,6 +114,7 @@ mod tests {
             output_path: "test.svg".to_string(),
             json_output: None,
             filter_path: None,
+            aggregator_url: None,
         };
 
         assert!(valid.validate().is_ok());
@@ -122,6 +127,7 @@ mod tests {
             output_path: "test.svg".to_string(),
             json_output: None,
             filter_path: None,
+            aggregator_url: None,
         };
 
         assert!(invalid.validate().is_err());
@@ -137,6 +143,7 @@ mod tests {
             output_path: "test.svg".to_string(),
             json_output: None,
             filter_path: None,
+            aggregator_url: None,
         };
         assert!(config.validate().is_err());
     }
@@ -151,6 +158,7 @@ mod tests {
             output_path: "test.svg".to_string(),
             json_output: None,
             filter_path: None,
+            aggregator_url: None,
         };
         assert!(config.validate().is_ok());
     }
@@ -165,6 +173,7 @@ mod tests {
             output_path: "test.svg".to_string(),
             json_output: None,
             filter_path: None,
+            aggregator_url: None,
         };
         assert!(config.validate().is_err());
     }
@@ -179,6 +188,7 @@ mod tests {
             output_path: "test.svg".to_string(),
             json_output: None,
             filter_path: None,
+            aggregator_url: None,
         };
         assert_eq!(config.sample_period_ns(), 0);
     }

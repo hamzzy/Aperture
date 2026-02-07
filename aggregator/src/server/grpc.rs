@@ -30,7 +30,6 @@ impl AggregatorService {
         }
     }
 
-    /// Enable Phase 6 persistent storage (e.g. ClickHouse).
     pub fn with_batch_store(mut self, store: Arc<dyn BatchStore>) -> Self {
         self.batch_store = Some(store);
         self

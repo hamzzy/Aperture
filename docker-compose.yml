@@ -1,0 +1,20 @@
+# ClickHouse for Aperture aggregator E2E tests (Phase 6)
+# Run: ./scripts/e2e-clickhouse.sh
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: aperture-clickhouse
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # Native
+    environment:
+      CLICKHOUSE_DB: aperture
+      # 23.8: set password so we can connect from host (default user)
+      CLICKHOUSE_PASSWORD: e2etest
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8123/ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 5s

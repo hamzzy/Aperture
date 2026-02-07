@@ -32,6 +32,10 @@ pub struct ProfileArgs {
     /// Verbose logging
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Push collected data to this aggregator gRPC URL (e.g. http://127.0.0.1:50051)
+    #[arg(long)]
+    pub aggregator: Option<String>,
 }
 
 pub async fn run(args: ProfileArgs) -> Result<()> {
@@ -52,6 +56,7 @@ pub async fn run(args: ProfileArgs) -> Result<()> {
         output_path: args.output,
         json_output: args.json,
         filter_path: None,
+        aggregator_url: args.aggregator,
     };
 
     aperture_agent::run_profiler(config).await

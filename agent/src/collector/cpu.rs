@@ -3,7 +3,7 @@
 //! Collects CPU profiling samples from eBPF and builds profile data
 
 use anyhow::Result;
-use aperture_shared::types::events::CpuSample;
+use aperture_shared::types::events::{CpuSample, ProfileEvent};
 use aperture_shared::types::profile::{Profile, Stack};
 use aya::maps::StackTraceMap;
 use tracing::{debug, info};
@@ -157,6 +157,14 @@ impl CpuCollector {
         self.samples.len()
     }
 
+    /// Events for pushing to the aggregator (Phase 5+)
+    pub fn profile_events(&self) -> Vec<ProfileEvent> {
+        self.samples
+            .iter()
+            .cloned()
+            .map(ProfileEvent::CpuSample)
+            .collect()
+    }
 }
 
 #[cfg(test)]
