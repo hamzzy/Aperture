@@ -117,50 +117,51 @@ This document outlines the development phases and milestones for the Aperture pr
 - GPU-aware flamegraphs
 - Combined CPU+GPU analysis
 
-### Phase 5: Distributed Aggregator
+### Phase 5: Distributed Aggregator ✅ (core done)
 
 **Goal**: Build central aggregation service for multi-agent deployments
 
 **Milestones**:
-- [ ] Agent-to-aggregator protocol
-  - [ ] Cap'n Proto schema definition
-  - [ ] gRPC service implementation
-  - [ ] TLS support
-- [ ] Aggregator service
-  - [ ] Multi-agent data ingestion
-  - [ ] In-memory buffering
-  - [ ] Query API
+- [x] Agent-to-aggregator protocol
+  - [x] Wire format (bincode `Message`: version, sequence, events)
+  - [x] gRPC service implementation (Push + Query)
+  - [ ] TLS support (future)
+- [x] Aggregator service
+  - [x] Multi-agent data ingestion (Push RPC)
+  - [x] In-memory buffering (ring buffer, 10k batches)
+  - [x] Query API (Query RPC + `aperture query` CLI)
 - [ ] Deployment
   - [ ] Docker images
   - [ ] Kubernetes manifests
-  - [ ] Configuration management
+  - [x] Configuration (env `APERTURE_AGGREGATOR_LISTEN`, default 0.0.0.0:50051)
 
 **Deliverables**:
-- Scalable aggregator service
-- Multi-agent coordination
-- Container deployment support
+- Scalable aggregator service (gRPC server, in-memory buffer)
+- CLI query command
+- Agent push client integration (follow-up)
+- Container deployment support (future)
 
-### Phase 6: Storage Integration
+### Phase 6: Storage Integration ✅ (ClickHouse done)
 
 **Goal**: Persistent storage for long-term profiling data
 
 **Milestones**:
-- [ ] ClickHouse backend
-  - [ ] Schema design for profiling data
-  - [ ] Efficient batch insertion
-  - [ ] Query optimization
+- [x] ClickHouse backend
+  - [x] Schema: `aperture_batches` (agent_id, sequence, received_at_ms, event_count, payload base64)
+  - [x] Batch insertion on Push (optional, behind `clickhouse-storage` feature)
+  - [ ] Query optimization (indexes, partitioning)
 - [ ] ScyllaDB backend (optional)
   - [ ] Wide-column schema
   - [ ] Time-series optimization
-- [ ] Query layer
-  - [ ] Time-range queries
+- [x] Query layer
+  - [x] Time-range queries (QueryStorage RPC: time_start_ns, time_end_ns, agent_id, limit)
   - [ ] Aggregation functions
   - [ ] Differential profiling
 
 **Deliverables**:
-- Persistent storage backend
-- Query API
-- Historical analysis capabilities
+- ClickHouse persistent backend (feature-gated)
+- QueryStorage gRPC + env config (`APERTURE_CLICKHOUSE_ENDPOINT`, `APERTURE_CLICKHOUSE_DATABASE`)
+- ScyllaDB and aggregation (future)
 
 ### Phase 7: Production Hardening
 

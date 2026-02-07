@@ -22,6 +22,8 @@ tokio.workspace = true
 # Internal dependencies
 aperture-shared = { path = "../shared" }
 aperture-agent = { path = "../agent" }
+aperture-aggregator = { path = "../aggregator" }
+tonic = "0.11"
 
 # Logging
 tracing.workspace = true

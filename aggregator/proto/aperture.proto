@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package aperture.aggregator.v1;
+
+// Aggregator service: receives profile data from agents and supports queries.
+service Aggregator {
+  // Push a batch of profile events from an agent.
+  rpc Push(PushRequest) returns (PushResponse);
+  // Query in-memory buffer (recent batches, by agent).
+  rpc Query(QueryRequest) returns (QueryResponse);
+  // Query persistent storage (Phase 6: time-range, requires ClickHouse).
+  rpc QueryStorage(QueryStorageRequest) returns (QueryResponse);
+}
+
+message PushRequest {
+  string agent_id = 1;
+  uint64 sequence = 2;
+  bytes payload = 3;  // bincode-serialized aperture_shared::protocol::wire::Message
+}
+
+message PushResponse {
+  bool ok = 1;
+  string error = 2;
+}
+
+message QueryRequest {
+  optional string agent_id = 1;  // filter by agent; empty = all
+  uint32 limit = 2;              // max batches to return (default 100)
+}
+
+message QueryStorageRequest {
+  optional string agent_id = 1;
+  optional int64 time_start_ns = 2;  // Unix epoch nanoseconds
+  optional int64 time_end_ns = 3;
+  uint32 limit = 4;
+}
+
+message BatchInfo {
+  string agent_id = 1;
+  uint64 sequence = 2;
+  uint64 event_count = 3;
+  int64 received_at_ns = 4;
+}
+
+message QueryResponse {
+  repeated BatchInfo batches = 1;
+  string error = 2;  // set if query failed
+}

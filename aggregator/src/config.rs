@@ -18,3 +18,13 @@ pub enum StorageConfig {
     Scylla { endpoints: Vec<String>, keyspace: String },
     InMemory,
 }
+
+impl Default for AggregatorConfig {
+    fn default() -> Self {
+        Self {
+            listen_addr: std::env::var("APERTURE_AGGREGATOR_LISTEN")
+                .unwrap_or_else(|_| "0.0.0.0:50051".to_string()),
+            storage: StorageConfig::InMemory,
+        }
+    }
+}

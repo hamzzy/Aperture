@@ -1,6 +1,6 @@
-//! Wire protocol implementation
+//! Wire protocol implementation for agent-aggregator communication.
 //!
-//! TODO Phase 5: Implement Cap'n Proto-based wire protocol for agent-aggregator communication
+//! Uses bincode for efficient serialization. Cap'n Proto can be added later for zero-copy.
 
 use crate::types::events::ProfileEvent;
 use anyhow::Result;
@@ -9,7 +9,7 @@ use anyhow::Result;
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Wire message envelope
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Message {
     pub version: u32,
     pub sequence: u64,
@@ -26,15 +26,13 @@ impl Message {
         }
     }
 
-    /// Serialize message to bytes (placeholder)
+    /// Serialize message to bytes (bincode)
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        // TODO: Implement Cap'n Proto serialization
         Ok(bincode::serialize(self)?)
     }
 
-    /// Deserialize message from bytes (placeholder)
-    pub fn from_bytes(_bytes: &[u8]) -> Result<Self> {
-        // TODO: Implement Cap'n Proto deserialization
-        todo!("Cap'n Proto deserialization not yet implemented")
+    /// Deserialize message from bytes (bincode)
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        Ok(bincode::deserialize(bytes)?)
     }
 }

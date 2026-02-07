@@ -172,9 +172,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "aperture-shared",
+ "async-trait",
+ "base64 0.21.7",
  "clickhouse",
  "config",
  "prost",
+ "protoc-bin-vendored",
  "scylla",
  "serde",
  "serde_json",
@@ -192,6 +195,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "aperture-agent",
+ "aperture-aggregator",
  "aperture-shared",
  "clap",
  "colored",
@@ -199,6 +203,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tonic",
  "tracing",
  "tracing-subscriber",
 ]
@@ -210,15 +215,6 @@ dependencies = [
  "aya-ebpf",
  "aya-ebpf-bindings",
  "aya-log-ebpf",
-]
-
-[[package]]
-name = "aperture-filter"
-version = "0.1.0"
-dependencies = [
- "aperture-shared",
- "bincode",
- "serde",
 ]
 
 [[package]]
@@ -2979,6 +2975,12 @@ checksum = "9091c90b0a32608e984ff2fa4091273cbdd755d54935c51d520887f4a1dbd5b0"
 dependencies = [
  "prost",
 ]
+
+[[package]]
+name = "protoc-bin-vendored"
+version = "2.27.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68e1821cd48a880fe335a80ecb6af0efdd4820fe9cd79920a413d6e15ab39351"
 
 [[package]]
 name = "psm"
