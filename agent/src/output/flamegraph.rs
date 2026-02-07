@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use aperture_shared::types::profile::Profile;
 use inferno::flamegraph;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use tracing::info;
 
 /// Generate a flamegraph from profile data
@@ -69,7 +69,6 @@ pub fn generate_flamegraph(profile: &Profile, output_path: &str) -> Result<()> {
 mod tests {
     use super::*;
     use aperture_shared::types::profile::{Frame, Stack};
-    use std::collections::HashMap;
     use tempfile::TempDir;
 
     #[test]
@@ -106,5 +105,39 @@ mod tests {
         let result = generate_flamegraph(&profile, output_path.to_str().unwrap());
         assert!(result.is_ok());
         assert!(output_path.exists());
+    }
+
+    #[test]
+    fn test_empty_profile_returns_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test.svg");
+        let profile = Profile::new(0, 1000, 10_000_000);
+        let result = generate_flamegraph(&profile, output_path.to_str().unwrap());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unresolved_frames_use_hex_address() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_path = temp_dir.path().join("test.svg");
+
+        let mut profile = Profile::new(0, 1000, 10_000_000);
+        let stack = Stack {
+            frames: vec![Frame {
+                ip: 0xdeadbeef,
+                function: None,
+                file: None,
+                line: None,
+                module: None,
+            }],
+        };
+        profile.add_sample(stack);
+
+        let result = generate_flamegraph(&profile, output_path.to_str().unwrap());
+        assert!(result.is_ok());
+
+        // Verify the SVG contains the hex address
+        let svg = std::fs::read_to_string(&output_path).unwrap();
+        assert!(svg.contains("0xdeadbeef"));
     }
 }

@@ -18,6 +18,9 @@ anyhow.workspace = true
 # Time handling
 chrono = "0.4"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 # Cap'n Proto for wire protocol (Phase 5+)
 capnp = { version = "0.18", optional = true }
 

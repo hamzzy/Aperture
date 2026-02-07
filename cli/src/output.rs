@@ -1,4 +1,4 @@
-//! Output formatting utilities
+//! Output formatting utilities for CLI commands
 
 use colored::Colorize;
 

@@ -21,6 +21,11 @@ tokio.workspace = true
 
 # Internal dependencies
 aperture-shared = { path = "../shared" }
+aperture-agent = { path = "../agent" }
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 # CLI utilities
 colored = "2.1"

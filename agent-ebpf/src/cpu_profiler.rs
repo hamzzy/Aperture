@@ -7,9 +7,9 @@
 
 use aya_ebpf::{
     helpers::{bpf_get_current_comm, bpf_get_smp_processor_id, bpf_ktime_get_ns},
-    macros::{kprobe, map},
+    macros::{map, perf_event},
     maps::{PerfEventArray, StackTrace},
-    programs::ProbeContext,
+    programs::PerfEventContext,
     EbpfContext,
 };
 
@@ -39,8 +39,8 @@ pub struct SampleEvent {
     pub comm: [u8; 16],
 }
 
-#[kprobe]
-pub fn cpu_profiler(ctx: ProbeContext) -> u32 {
+#[perf_event]
+pub fn cpu_profiler(ctx: PerfEventContext) -> i64 {
     match try_cpu_profiler(&ctx) {
         Ok(ret) => ret,
         Err(_) => 1,
@@ -48,7 +48,7 @@ pub fn cpu_profiler(ctx: ProbeContext) -> u32 {
 }
 
 #[inline(always)]
-fn try_cpu_profiler(ctx: &ProbeContext) -> Result<u32, i64> {
+fn try_cpu_profiler(ctx: &PerfEventContext) -> Result<i64, i64> {
     let pid_tgid = ctx.pid();
     let tgid = ctx.tgid();
 
@@ -57,7 +57,7 @@ fn try_cpu_profiler(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    // Get timestamp and CPU
+    // Get timestamp and CPU id
     let timestamp = unsafe { bpf_ktime_get_ns() };
     let cpu = unsafe { bpf_get_smp_processor_id() };
 

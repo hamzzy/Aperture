@@ -2,13 +2,11 @@
 //!
 //! Collects CPU profiling samples from eBPF and builds profile data
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use aperture_shared::types::events::CpuSample;
 use aperture_shared::types::profile::{Profile, Stack};
 use aya::maps::StackTraceMap;
-use bytes::BytesMut;
-use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Raw sample event from eBPF (must match agent-ebpf/src/cpu_profiler.rs)
 #[repr(C)]
@@ -102,7 +100,7 @@ impl CpuCollector {
         };
 
         let sample = CpuSample {
-            timestamp: event.timestamp,
+            timestamp: aperture_shared::utils::time::boot_time_to_system_time(event.timestamp),
             pid: event.pid as i32,
             tid: event.tid as i32,
             cpu_id: event.cpu,
@@ -158,16 +156,6 @@ impl CpuCollector {
         self.samples.len()
     }
 
-    /// Get samples grouped by process
-    pub fn samples_by_pid(&self) -> HashMap<i32, Vec<&CpuSample>> {
-        let mut by_pid: HashMap<i32, Vec<&CpuSample>> = HashMap::new();
-
-        for sample in &self.samples {
-            by_pid.entry(sample.pid).or_default().push(sample);
-        }
-
-        by_pid
-    }
 }
 
 #[cfg(test)]
@@ -196,5 +184,92 @@ mod tests {
 
         collector.add_sample(sample);
         assert_eq!(collector.sample_count(), 1);
+    }
+
+    #[test]
+    fn test_build_profile_aggregates_stacks() {
+        let mut collector = CpuCollector::new(10_000_000);
+
+        // Add two identical stacks — should aggregate to count=2
+        for _ in 0..2 {
+            collector.add_sample(CpuSample {
+                timestamp: 100,
+                pid: 1,
+                tid: 1,
+                cpu_id: 0,
+                user_stack: vec![0x1000, 0x2000],
+                kernel_stack: vec![],
+                comm: "test".to_string(),
+            });
+        }
+
+        // Add one different stack
+        collector.add_sample(CpuSample {
+            timestamp: 200,
+            pid: 1,
+            tid: 1,
+            cpu_id: 0,
+            user_stack: vec![0x3000],
+            kernel_stack: vec![],
+            comm: "test".to_string(),
+        });
+
+        let profile = collector.build_profile().unwrap();
+        assert_eq!(profile.total_samples, 3);
+        assert_eq!(profile.samples.len(), 2); // 2 unique stacks
+    }
+
+    #[test]
+    fn test_build_profile_skips_empty_stacks() {
+        let mut collector = CpuCollector::new(10_000_000);
+
+        // Sample with no stack frames at all
+        collector.add_sample(CpuSample {
+            timestamp: 100,
+            pid: 1,
+            tid: 1,
+            cpu_id: 0,
+            user_stack: vec![],
+            kernel_stack: vec![],
+            comm: "test".to_string(),
+        });
+
+        // Sample with frames
+        collector.add_sample(CpuSample {
+            timestamp: 200,
+            pid: 1,
+            tid: 1,
+            cpu_id: 0,
+            user_stack: vec![0x1000],
+            kernel_stack: vec![],
+            comm: "test".to_string(),
+        });
+
+        let profile = collector.build_profile().unwrap();
+        assert_eq!(profile.total_samples, 1); // Only the one with frames
+    }
+
+    #[test]
+    fn test_build_profile_combines_user_and_kernel_stacks() {
+        let mut collector = CpuCollector::new(10_000_000);
+
+        collector.add_sample(CpuSample {
+            timestamp: 100,
+            pid: 1,
+            tid: 1,
+            cpu_id: 0,
+            user_stack: vec![0x400000],
+            kernel_stack: vec![0xffffffff81000000],
+            comm: "test".to_string(),
+        });
+
+        let profile = collector.build_profile().unwrap();
+        assert_eq!(profile.total_samples, 1);
+        assert_eq!(profile.samples.len(), 1);
+
+        // The single stack should have 2 frames (user + kernel)
+        let (stack, count) = profile.samples.iter().next().unwrap();
+        assert_eq!(*count, 1);
+        assert_eq!(stack.frames.len(), 2);
     }
 }

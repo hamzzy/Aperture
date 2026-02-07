@@ -11,27 +11,29 @@ This document outlines the development phases and milestones for the Aperture pr
 - [x] Basic configuration files (Cargo.toml, rustfmt, clippy)
 - [x] Documentation structure
 
-### Phase 1: Basic CPU Profiling 🚧
+### Phase 1: Basic CPU Profiling ✅
 
 **Goal**: Implement fundamental CPU profiling using eBPF stack sampling
 
 **Milestones**:
-- [ ] eBPF program for CPU sampling
-  - [ ] Implement perf_event-based sampling
-  - [ ] Stack trace collection (kernel + userspace)
-  - [ ] BPF map for storing stack traces
-- [ ] Userspace agent
-  - [ ] eBPF program loader (using Aya)
-  - [ ] Stack trace retrieval from BPF maps
-  - [ ] Symbol resolution (using DWARF/symbols)
-  - [ ] Process and thread context collection
-- [ ] Output generation
-  - [ ] Flamegraph generation (using inferno)
-  - [ ] JSON output format
-  - [ ] CLI for basic operations
-- [ ] Testing & validation
-  - [ ] Unit tests for components
-  - [ ] Integration tests
+- [x] eBPF program for CPU sampling
+  - [x] Implement perf_event-based sampling (software CPU clock, configurable Hz)
+  - [x] Stack trace collection (kernel + userspace)
+  - [x] BPF map for storing stack traces (EVENTS PerfEventArray + STACKS StackTraceMap)
+- [x] Userspace agent
+  - [x] eBPF program loader (using Aya)
+  - [x] Stack trace retrieval from BPF maps (per-CPU async readers)
+  - [x] Symbol resolution (using blazesym)
+  - [x] Process and thread context collection
+  - [x] PID filtering via perf_event_open scope (handles PID namespaces)
+  - [x] Timestamp conversion (monotonic → wall clock)
+- [x] Output generation
+  - [x] Flamegraph generation (using inferno)
+  - [x] JSON output format
+  - [x] CLI for basic operations (wired to agent library)
+- [x] Testing & validation
+  - [x] Unit tests for components (30 tests across agent + shared)
+  - [x] Integration test (full pipeline: collect → build → flamegraph + JSON)
   - [ ] Benchmarking overhead (<1% target)
 
 **Deliverables**:

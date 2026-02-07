@@ -87,4 +87,52 @@ mod tests {
 
         assert!(invalid.validate().is_err());
     }
+
+    #[test]
+    fn test_validation_rate_too_high() {
+        let config = Config {
+            target_pid: None,
+            sample_rate_hz: 10001,
+            duration: Duration::from_secs(5),
+            output_path: "test.svg".to_string(),
+            json_output: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validation_max_rate_ok() {
+        let config = Config {
+            target_pid: None,
+            sample_rate_hz: 10000,
+            duration: Duration::from_secs(5),
+            output_path: "test.svg".to_string(),
+            json_output: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validation_zero_duration() {
+        let config = Config {
+            target_pid: None,
+            sample_rate_hz: 99,
+            duration: Duration::from_secs(0),
+            output_path: "test.svg".to_string(),
+            json_output: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_sample_period_zero_rate() {
+        let config = Config {
+            target_pid: None,
+            sample_rate_hz: 0,
+            duration: Duration::from_secs(1),
+            output_path: "test.svg".to_string(),
+            json_output: None,
+        };
+        assert_eq!(config.sample_period_ns(), 0);
+    }
 }

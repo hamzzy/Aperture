@@ -1,15 +1,15 @@
 //! CLI for Aperture
 //!
-//! This is a higher-level CLI that will eventually support multiple commands:
+//! This is a higher-level CLI that supports multiple commands:
 //! - profile: Run profiling (wraps agent)
 //! - query: Query aggregated data (Phase 5+)
-//! - analyze: Analyze profile data
-//! - export: Export profiles in various formats
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod commands;
+#[allow(dead_code)]
 mod output;
 
 #[derive(Parser)]
@@ -36,7 +36,23 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Profile(args) => commands::profile::run(args).await,
+        Commands::Profile(args) => {
+            init_tracing(args.verbose);
+            commands::profile::run(args).await
+        }
         Commands::Query(args) => commands::query::run(args).await,
     }
+}
+
+fn init_tracing(verbose: bool) {
+    let filter = if verbose {
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"))
+    } else {
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+    };
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer().with_target(false))
+        .init();
 }

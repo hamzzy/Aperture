@@ -5,16 +5,17 @@
 use anyhow::{Context, Result};
 use aya::{
     programs::{
-        KProbe,
-        kprobe::KProbeLinkId,
+        PerfEvent,
+        perf_event::{PerfEventLinkId, PerfTypeId, PerfEventScope, SamplePolicy},
     },
-    Bpf,
+    util::online_cpus,
+    Ebpf,
 };
 use tracing::info;
 
-/// Storage for kprobe links to keep them alive
+/// Storage for perf event links to keep them alive
 pub struct PerfEventLinks {
-    links: Vec<KProbeLinkId>,
+    links: Vec<PerfEventLinkId>,
 }
 
 impl PerfEventLinks {
@@ -22,14 +23,14 @@ impl PerfEventLinks {
         Self { links: Vec::new() }
     }
 
-    pub fn add(&mut self, link: KProbeLinkId) {
+    pub fn add(&mut self, link: PerfEventLinkId) {
         self.links.push(link);
     }
 }
 
 /// Load the CPU profiler eBPF program
-pub fn load_cpu_profiler() -> Result<Bpf> {
-    use aya::BpfLoader;
+pub fn load_cpu_profiler() -> Result<Ebpf> {
+    use aya::EbpfLoader;
 
     info!("Loading CPU profiler eBPF program");
 
@@ -43,7 +44,7 @@ pub fn load_cpu_profiler() -> Result<Bpf> {
         info!("Loading eBPF from file: {:?}", path);
 
         if path.exists() {
-            let bpf = BpfLoader::new()
+            let bpf = EbpfLoader::new()
                 .load_file(&path)
                 .context("Failed to load eBPF program from file")?;
             info!("Successfully loaded CPU profiler eBPF program from file");
@@ -62,7 +63,7 @@ pub fn load_cpu_profiler() -> Result<Bpf> {
         ));
 
         // Load the eBPF program
-        let bpf = BpfLoader::new()
+        let bpf = EbpfLoader::new()
             .allow_unsupported_maps()
             .load(bpf_data)
             .context("Failed to load eBPF program")?;
@@ -71,42 +72,78 @@ pub fn load_cpu_profiler() -> Result<Bpf> {
     }
 }
 
-/// Attach CPU profiler as kprobe
+/// Attach CPU profiler as perf_event
 ///
-/// Attaches the eBPF program as a kprobe on finish_task_switch
-pub fn attach_cpu_profiler(bpf: &mut Bpf, _sample_rate_hz: u64) -> Result<PerfEventLinks> {
+/// Uses software CPU clock sampling at the given frequency.
+/// When `target_pid` is Some, attaches to that single process (kernel handles
+/// PID namespace translation). When None, attaches to all processes on each CPU.
+pub fn attach_cpu_profiler(
+    bpf: &mut Ebpf,
+    sample_rate_hz: u64,
+    target_pid: Option<i32>,
+) -> Result<PerfEventLinks> {
     use tracing::debug;
 
-    info!("Attaching CPU profiler as kprobe on do_sys_openat2");
+    info!("Attaching CPU profiler as perf_event at {} Hz", sample_rate_hz);
 
-    // Debug: List all programs in the BPF object
     debug!("Available programs:");
     for (name, program) in bpf.programs() {
         debug!("  - {} (type: {:?})", name, program.prog_type());
     }
 
-    let program: &mut KProbe = bpf
+    let program: &mut PerfEvent = bpf
         .program_mut("cpu_profiler")
         .context("Failed to find cpu_profiler program")?
         .try_into()
-        .context("Program is not a KProbe")?;
+        .context("Program is not a PerfEvent")?;
 
-    // Load the program into the kernel
     info!("Loading program into kernel");
-    program.load().context("Failed to load kprobe program")?;
+    program.load().context("Failed to load perf_event program")?;
     info!("Program loaded successfully");
 
     let mut links = PerfEventLinks::new();
 
-    // Attach to do_sys_openat2 kernel function for testing
-    // vfs_read doesn't fire on OrbStack kernels, but do_sys_openat2 does
-    info!("Attaching to do_sys_openat2");
-    let link = program
-        .attach("do_sys_openat2", 0)
-        .context("Failed to attach to do_sys_openat2")?;
+    match target_pid {
+        Some(pid) => {
+            // Attach to a specific process on any CPU.
+            // perf_event_open accepts namespace-relative PIDs, so this works
+            // correctly in PID namespaces (e.g., OrbStack VMs).
+            info!("Attaching to PID {} on any CPU", pid);
+            let link = program
+                .attach(
+                    PerfTypeId::Software,
+                    0, // PERF_COUNT_SW_CPU_CLOCK
+                    PerfEventScope::OneProcessAnyCpu { pid: pid as u32 },
+                    SamplePolicy::Frequency(sample_rate_hz),
+                    false,
+                )
+                .context(format!("Failed to attach perf_event for PID {}", pid))?;
 
-    links.add(link);
-    info!("Successfully attached kprobe");
+            links.add(link);
+            info!("Successfully attached to PID {}", pid);
+        }
+        None => {
+            // Attach to all processes, one perf event per CPU.
+            let cpus = online_cpus().map_err(|(msg, e)| anyhow::anyhow!("{}: {}", msg, e))?;
+            info!("Attaching to all processes on {} CPUs", cpus.len());
+
+            for cpu in &cpus {
+                let link = program
+                    .attach(
+                        PerfTypeId::Software,
+                        0, // PERF_COUNT_SW_CPU_CLOCK
+                        PerfEventScope::AllProcessesOneCpu { cpu: *cpu },
+                        SamplePolicy::Frequency(sample_rate_hz),
+                        false,
+                    )
+                    .context(format!("Failed to attach perf_event on CPU {}", cpu))?;
+
+                links.add(link);
+            }
+
+            info!("Successfully attached to {} CPUs", cpus.len());
+        }
+    }
 
     Ok(links)
 }

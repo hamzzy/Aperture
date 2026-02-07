@@ -12,6 +12,10 @@ linker = "bpf-linker"
 rustflags = [
     "-C", "link-arg=--disable-memory-builtins",
     "-C", "debuginfo=2",
+    "-C", "debug-assertions=no",
+    "-C", "overflow-checks=no",
+    "-C", "opt-level=3",
+    "-Z", "ub-checks=no",
 ]
 
 [alias]

@@ -132,4 +132,54 @@ mod tests {
         let profile = Profile::new(0, 1000, 10_000_000); // 10ms period
         assert!((profile.sampling_rate_hz() - 100.0).abs() < 0.01);
     }
+
+    #[test]
+    fn test_sampling_rate_zero_period() {
+        let profile = Profile::new(0, 1000, 0);
+        assert_eq!(profile.sampling_rate_hz(), 0.0);
+    }
+
+    #[test]
+    fn test_duration_ns() {
+        let profile = Profile::new(1000, 5000, 0);
+        assert_eq!(profile.duration_ns(), 4000);
+    }
+
+    #[test]
+    fn test_frame_new_unresolved() {
+        let frame = Frame::new_unresolved(0xdeadbeef);
+        assert_eq!(frame.ip, 0xdeadbeef);
+        assert!(!frame.is_symbolized());
+    }
+
+    #[test]
+    fn test_frame_is_symbolized() {
+        let mut frame = Frame::new_unresolved(0x1000);
+        assert!(!frame.is_symbolized());
+        frame.function = Some("main".to_string());
+        assert!(frame.is_symbolized());
+    }
+
+    #[test]
+    fn test_stack_from_ips() {
+        let stack = Stack::from_ips(&[0x1000, 0x2000, 0x3000]);
+        assert_eq!(stack.frames.len(), 3);
+        assert_eq!(stack.frames[0].ip, 0x1000);
+        assert_eq!(stack.frames[2].ip, 0x3000);
+        assert!(stack.frames.iter().all(|f| !f.is_symbolized()));
+    }
+
+    #[test]
+    fn test_profile_multiple_unique_stacks() {
+        let mut profile = Profile::new(0, 1000, 10_000_000);
+
+        profile.add_sample(Stack::from_ips(&[0x1000]));
+        profile.add_sample(Stack::from_ips(&[0x2000]));
+        profile.add_sample(Stack::from_ips(&[0x1000])); // duplicate
+
+        assert_eq!(profile.total_samples, 3);
+        assert_eq!(profile.samples.len(), 2);
+        assert_eq!(*profile.samples.get(&Stack::from_ips(&[0x1000])).unwrap(), 2);
+        assert_eq!(*profile.samples.get(&Stack::from_ips(&[0x2000])).unwrap(), 1);
+    }
 }

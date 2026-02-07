@@ -15,10 +15,6 @@ aya-log-ebpf = "0.1"
 name = "cpu-profiler"
 path = "src/cpu_profiler.rs"
 
-[[bin]]
-name = "minimal-test"
-path = "src/minimal_test.rs"
-
 [profile.dev]
 opt-level = 3
 debug = false

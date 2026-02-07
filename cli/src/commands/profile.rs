@@ -1,6 +1,6 @@
 //! Profile command implementation
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Args;
 
 #[derive(Args, Debug)]
@@ -17,23 +17,31 @@ pub struct ProfileArgs {
     #[arg(short, long, default_value = "99")]
     pub sample_rate: u64,
 
-    /// Output file
+    /// Output file for flamegraph (SVG format)
     #[arg(short, long, default_value = "flamegraph.svg")]
     pub output: String,
+
+    /// Also output raw data in JSON format
+    #[arg(long)]
+    pub json: Option<String>,
+
+    /// Verbose logging
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 pub async fn run(args: ProfileArgs) -> Result<()> {
-    println!("Running profiler...");
-    println!("  PID: {:?}", args.pid.map(|p| p.to_string()).unwrap_or_else(|| "all".to_string()));
-    println!("  Duration: {}", args.duration);
-    println!("  Sample rate: {} Hz", args.sample_rate);
-    println!("  Output: {}", args.output);
+    // Parse duration
+    let duration = aperture_shared::utils::parse_duration(&args.duration)
+        .context("Failed to parse duration")?;
 
-    // TODO Phase 1: Invoke the agent to run profiling
-    // This will shell out to profiler-agent or use it as a library
+    let config = aperture_agent::Config {
+        target_pid: args.pid,
+        sample_rate_hz: args.sample_rate,
+        duration,
+        output_path: args.output,
+        json_output: args.json,
+    };
 
-    println!("\nTODO: Implement agent invocation");
-    println!("This CLI will eventually wrap the profiler-agent binary");
-
-    Ok(())
+    aperture_agent::run_profiler(config).await
 }

@@ -148,10 +148,6 @@ impl SymbolResolver {
         self.cache.len()
     }
 
-    /// Clear the cache
-    pub fn clear_cache(&mut self) {
-        self.cache.clear();
-    }
 }
 
 impl Default for SymbolResolver {

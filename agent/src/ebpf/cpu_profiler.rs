@@ -3,20 +3,17 @@
 //! Handles the lifecycle of the CPU profiling eBPF program
 
 use anyhow::{Context, Result};
-use aya::{
-    maps::Map,
-    Bpf,
-};
+use aya::Ebpf;
 use tracing::{info, warn};
 
 use super::loader::{self, PerfEventLinks};
-use crate::collector::cpu::SampleEvent;
 
 /// CPU profiler manager
 pub struct CpuProfiler {
-    bpf: Bpf,
+    bpf: Ebpf,
     links: Option<PerfEventLinks>,
     sample_rate_hz: u64,
+    target_pid: Option<i32>,
 }
 
 impl CpuProfiler {
@@ -31,7 +28,18 @@ impl CpuProfiler {
             bpf,
             links: None,
             sample_rate_hz,
+            target_pid: None,
         })
+    }
+
+    /// Set target PID filter (None = profile all processes).
+    /// PID filtering is done at the kernel level via perf_event_open scope,
+    /// which correctly handles PID namespaces.
+    pub fn set_target_pid(&mut self, pid: Option<i32>) {
+        if let Some(p) = pid {
+            info!("Will filter for PID {}", p);
+        }
+        self.target_pid = pid;
     }
 
     /// Start profiling
@@ -45,7 +53,7 @@ impl CpuProfiler {
 
         // Attach eBPF program to perf events
         let links =
-            loader::attach_cpu_profiler(&mut self.bpf, self.sample_rate_hz)
+            loader::attach_cpu_profiler(&mut self.bpf, self.sample_rate_hz, self.target_pid)
                 .context("Failed to attach CPU profiler")?;
 
         self.links = Some(links);
@@ -69,14 +77,10 @@ impl CpuProfiler {
     }
 
     /// Get mutable reference to the BPF object for map access
-    pub fn bpf_mut(&mut self) -> &mut Bpf {
+    pub fn bpf_mut(&mut self) -> &mut Ebpf {
         &mut self.bpf
     }
 
-    /// Check if the profiler is currently running
-    pub fn is_running(&self) -> bool {
-        self.links.is_some()
-    }
 }
 
 impl Drop for CpuProfiler {
