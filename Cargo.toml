@@ -5,6 +5,7 @@ members = [
     "aggregator",
     "shared",
     "cli",
+    "wasm",
     "wasm-runtime",
     "gpu-profiler",
 ]

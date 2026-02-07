@@ -5,6 +5,7 @@
 
 pub mod types;
 pub mod utils;
+pub mod wasm;
 
 #[cfg(feature = "wire-protocol")]
 pub mod protocol;

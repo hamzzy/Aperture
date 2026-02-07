@@ -7,6 +7,7 @@ pub mod collector;
 pub mod config;
 pub mod ebpf;
 pub mod output;
+pub mod wasm;
 
 pub use config::Config;
 pub use config::ProfileMode;
@@ -141,13 +142,21 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
     // 5. Wait
     tokio::time::sleep(config.duration).await;
 
-    // 6. Cleanup
+    // 6. Cleanup — abort tasks and wait for them to drop their Arc clones
     for handle in &handles {
         handle.abort();
     }
+    for handle in handles {
+        let _ = handle.await;
+    }
     profiler.stop()?;
 
-    let collector = Arc::try_unwrap(collector).unwrap().into_inner();
+    // Drop the stack_map Arc so collector is the only one left
+    drop(stack_map);
+
+    let collector = Arc::try_unwrap(collector)
+        .map_err(|_| anyhow::anyhow!("Failed to unwrap collector Arc"))?
+        .into_inner();
     let mut profile = collector.build_profile()?;
 
     // 7. Symbolize & Output

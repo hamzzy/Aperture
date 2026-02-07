@@ -1,5 +1,6 @@
 //! Configuration types for the profiling agent
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// Profiling mode
@@ -45,6 +46,9 @@ pub struct Config {
 
     /// Optional JSON output path
     pub json_output: Option<String>,
+
+    /// Optional WASM filter path
+    pub filter_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -90,6 +94,7 @@ mod tests {
             duration: Duration::from_secs(10),
             output_path: "test.svg".to_string(),
             json_output: None,
+            filter_path: None,
         };
 
         assert_eq!(config.sample_period_ns(), 10_000_000);
@@ -104,6 +109,7 @@ mod tests {
             duration: Duration::from_secs(30),
             output_path: "test.svg".to_string(),
             json_output: None,
+            filter_path: None,
         };
 
         assert!(valid.validate().is_ok());
@@ -115,6 +121,7 @@ mod tests {
             duration: Duration::from_secs(30),
             output_path: "test.svg".to_string(),
             json_output: None,
+            filter_path: None,
         };
 
         assert!(invalid.validate().is_err());
@@ -129,6 +136,7 @@ mod tests {
             duration: Duration::from_secs(5),
             output_path: "test.svg".to_string(),
             json_output: None,
+            filter_path: None,
         };
         assert!(config.validate().is_err());
     }
@@ -142,6 +150,7 @@ mod tests {
             duration: Duration::from_secs(5),
             output_path: "test.svg".to_string(),
             json_output: None,
+            filter_path: None,
         };
         assert!(config.validate().is_ok());
     }
@@ -155,6 +164,7 @@ mod tests {
             duration: Duration::from_secs(0),
             output_path: "test.svg".to_string(),
             json_output: None,
+            filter_path: None,
         };
         assert!(config.validate().is_err());
     }
@@ -168,6 +178,7 @@ mod tests {
             duration: Duration::from_secs(1),
             output_path: "test.svg".to_string(),
             json_output: None,
+            filter_path: None,
         };
         assert_eq!(config.sample_period_ns(), 0);
     }

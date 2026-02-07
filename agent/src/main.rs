@@ -70,6 +70,7 @@ async fn main() -> Result<()> {
         duration,
         output_path: args.output.clone(),
         json_output: args.json.clone(),
+        filter_path: None,
     };
 
     // Check if running as root (required for eBPF)

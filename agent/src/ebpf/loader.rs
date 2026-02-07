@@ -13,6 +13,16 @@ use aya::{
 };
 use tracing::info;
 
+/// Get the device and inode numbers for the current PID namespace.
+/// These are needed by `bpf_get_ns_current_pid_tgid()` to resolve
+/// namespace-relative PIDs in eBPF programs.
+fn get_pidns_dev_ino() -> Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata("/proc/self/ns/pid")
+        .context("Failed to stat /proc/self/ns/pid")?;
+    Ok((meta.dev(), meta.ino()))
+}
+
 /// Storage for perf event links to keep them alive
 pub struct PerfEventLinks {
     links: Vec<PerfEventLinkId>,
@@ -234,7 +244,7 @@ pub fn load_lock_profiler() -> Result<Ebpf> {
 /// Attach lock profiler
 pub fn attach_lock_profiler(
     bpf: &mut Ebpf,
-    _target_pid: Option<i32>,
+    target_pid: Option<i32>,
 ) -> Result<TracepointLinks> {
     let mut links = TracepointLinks::new();
 
@@ -255,6 +265,21 @@ pub fn attach_lock_profiler(
         .context("Not a TracePoint")?;
     program.load()?;
     links.add(program.attach("syscalls", "sys_exit_futex")?);
+
+    // Write PID filter AFTER programs are loaded (so map relocations work)
+    let pid_value: u64 = target_pid.unwrap_or(0) as u64;
+    let mut filter_map: aya::maps::Array<_, u64> = aya::maps::Array::try_from(
+        bpf.map_mut("PID_FILTER").context("Failed to get PID_FILTER map")?
+    )?;
+    filter_map.set(0, pid_value, 0)?;
+    if pid_value != 0 {
+        let (dev, ino) = get_pidns_dev_ino()?;
+        filter_map.set(1, dev, 0)?;
+        filter_map.set(2, ino, 0)?;
+        info!("Lock profiler PID filter: pid={}, ns_dev={}, ns_ino={}", pid_value, dev, ino);
+    } else {
+        info!("Lock profiler PID filter: disabled (tracing all)");
+    }
 
     Ok(links)
 }
@@ -290,7 +315,7 @@ pub fn load_syscall_tracer() -> Result<Ebpf> {
 /// Attach syscall tracer
 pub fn attach_syscall_tracer(
     bpf: &mut Ebpf,
-    _target_pid: Option<i32>,
+    target_pid: Option<i32>,
 ) -> Result<RawTracepointLinks> {
     let mut links = RawTracepointLinks::new();
 
@@ -311,6 +336,21 @@ pub fn attach_syscall_tracer(
         .context("Not a RawTracePoint")?;
     program.load()?;
     links.add(program.attach("sys_exit")?);
+
+    // Write PID filter AFTER programs are loaded (so map relocations work)
+    let pid_value: u64 = target_pid.unwrap_or(0) as u64;
+    let mut filter_map: aya::maps::Array<_, u64> = aya::maps::Array::try_from(
+        bpf.map_mut("PID_FILTER").context("Failed to get PID_FILTER map")?
+    )?;
+    filter_map.set(0, pid_value, 0)?;
+    if pid_value != 0 {
+        let (dev, ino) = get_pidns_dev_ino()?;
+        filter_map.set(1, dev, 0)?;
+        filter_map.set(2, ino, 0)?;
+        info!("Syscall tracer PID filter: pid={}, ns_dev={}, ns_ino={}", pid_value, dev, ino);
+    } else {
+        info!("Syscall tracer PID filter: disabled (tracing all)");
+    }
 
     Ok(links)
 }

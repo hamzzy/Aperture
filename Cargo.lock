@@ -144,6 +144,7 @@ dependencies = [
  "aperture-shared",
  "aya",
  "aya-log",
+ "bincode",
  "blazesym",
  "bytes",
  "clap",
@@ -162,6 +163,7 @@ dependencies = [
  "tokio-test",
  "tracing",
  "tracing-subscriber",
+ "wasmtime",
 ]
 
 [[package]]
@@ -206,7 +208,17 @@ name = "aperture-ebpf"
 version = "0.1.0"
 dependencies = [
  "aya-ebpf",
+ "aya-ebpf-bindings",
  "aya-log-ebpf",
+]
+
+[[package]]
+name = "aperture-filter"
+version = "0.1.0"
+dependencies = [
+ "aperture-shared",
+ "bincode",
+ "serde",
 ]
 
 [[package]]

@@ -41,27 +41,35 @@ This document outlines the development phases and milestones for the Aperture pr
 - Flamegraph visualization
 - Basic CLI tool
 
-### Phase 2: Lock Contention & Syscall Tracing
+### Phase 2: Lock Contention & Syscall Tracing ✅
 
 **Goal**: Extend profiling to locks and system calls
 
 **Milestones**:
-- [ ] Lock contention profiling
-  - [ ] Futex tracing eBPF program
-  - [ ] Mutex hold time tracking
-  - [ ] Lock acquisition latency histograms
-- [ ] Syscall tracing
-  - [ ] Syscall entry/exit probes
-  - [ ] Per-syscall latency tracking
-  - [ ] Error rate monitoring
-- [ ] Enhanced output
-  - [ ] Lock contention flamegraphs
-  - [ ] Syscall latency histograms
-  - [ ] JSON format extensions
+- [x] Lock contention profiling
+  - [x] Futex tracing eBPF program (sys_enter_futex / sys_exit_futex tracepoints)
+  - [x] Lock wait time tracking (entry/exit correlation via BPF HashMap)
+  - [x] Lock contention aggregation by (lock_addr, stack) with min/max/total stats
+- [x] Syscall tracing
+  - [x] Syscall entry/exit raw tracepoints (sys_enter / sys_exit)
+  - [x] Per-syscall latency tracking with power-of-2 histogram (30 buckets)
+  - [x] Error rate monitoring (negative return values)
+  - [x] x86_64 syscall name resolution
+- [x] Enhanced output
+  - [x] Lock contention flamegraphs (stacks weighted by wait time in ns)
+  - [x] Syscall latency histograms (text table with count, avg, p50, p99, max, errors)
+  - [x] JSON format extensions (lock profile + syscall profile)
+- [x] Multi-mode support
+  - [x] `--mode cpu|lock|syscall|all` CLI flag
+  - [x] Concurrent profiling via tokio::join! for `--mode all`
+- [x] Testing & validation
+  - [x] Unit tests for lock and syscall collectors
+  - [x] Integration tests (lock and syscall pipeline)
+  - [x] E2E verification in VM (all modes)
 
 **Deliverables**:
-- Lock contention analysis
-- Syscall performance profiling
+- Lock contention analysis with flamegraph visualization
+- Syscall performance profiling with latency histograms
 
 ### Phase 3: WASM Filter Engine
 

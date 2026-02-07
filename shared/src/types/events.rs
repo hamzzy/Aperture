@@ -45,7 +45,7 @@ pub struct CpuSample {
     pub comm: String,
 }
 
-/// Lock contention event (Phase 2)
+/// Lock contention event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockEvent {
     pub timestamp: Timestamp,
@@ -58,7 +58,7 @@ pub struct LockEvent {
     pub comm: String,
 }
 
-/// Syscall event (Phase 2)
+/// Syscall event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyscallEvent {
     pub timestamp: Timestamp,
