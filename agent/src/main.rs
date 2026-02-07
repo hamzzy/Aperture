@@ -14,6 +14,10 @@ use aperture_agent::Config;
 #[command(about = "eBPF-based CPU profiler", long_about = None)]
 #[command(version)]
 struct Args {
+    /// Profiling mode (cpu, lock, syscall, all)
+    #[arg(short, long, default_value = "cpu")]
+    mode: String,
+
     /// Process ID to profile (default: profile all processes)
     #[arg(short, long)]
     pid: Option<i32>,
@@ -53,8 +57,14 @@ async fn main() -> Result<()> {
     let duration = aperture_shared::utils::parse_duration(&args.duration)
         .context("Failed to parse duration")?;
 
+    // Parse mode
+    use std::str::FromStr;
+    use aperture_agent::ProfileMode;
+    let mode = ProfileMode::from_str(&args.mode)?;
+
     // Create configuration
     let config = Config {
+        mode,
         target_pid: args.pid,
         sample_rate_hz: args.sample_rate,
         duration,

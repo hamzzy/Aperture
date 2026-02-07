@@ -3,7 +3,7 @@
 //! Resolves instruction pointers to function names, file names, and line numbers
 
 use anyhow::Result;
-use aperture_shared::types::profile::{Frame, Profile, Stack};
+use aperture_shared::types::profile::{Frame, LockProfile, Profile, Stack};
 use blazesym::symbolize::{Input, Symbolized, Symbolizer};
 use blazesym::symbolize::source::{Kernel, Process, Source};
 use blazesym::Pid;
@@ -56,6 +56,35 @@ impl SymbolResolver {
             *new_samples.entry(symbolized_stack).or_insert(0) += count;
         }
         profile.samples = new_samples;
+
+        Ok(())
+    }
+
+    /// Symbolize a lock profile
+    pub fn symbolize_lock_profile(&mut self, profile: &mut LockProfile, pid: Option<i32>) -> Result<()> {
+        debug!("Symbolizing {} unique contention stacks", profile.contentions.len());
+
+        // Collect all unique IPs
+        let mut all_ips: Vec<u64> = Vec::new();
+        for (_, stack) in profile.contentions.keys() {
+            for frame in &stack.frames {
+                if !self.cache.contains_key(&frame.ip) && !all_ips.contains(&frame.ip) {
+                    all_ips.push(frame.ip);
+                }
+            }
+        }
+
+        if !all_ips.is_empty() {
+            self.symbolize_ips(&all_ips, pid)?;
+        }
+
+        // Replace stacks
+        let mut new_contentions = HashMap::new();
+        for ((lock_addr, stack), stats) in profile.contentions.drain() {
+            let symbolized_stack = self.symbolize_stack(&stack);
+            new_contentions.insert((lock_addr, symbolized_stack), stats);
+        }
+        profile.contentions = new_contentions;
 
         Ok(())
     }

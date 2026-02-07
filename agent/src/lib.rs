@@ -9,16 +9,67 @@ pub mod ebpf;
 pub mod output;
 
 pub use config::Config;
+pub use config::ProfileMode;
 
 use anyhow::{Context, Result};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Run the profiler with the given configuration.
-///
-/// This is the main entry point for profiling — it loads the eBPF program,
-/// collects samples for the configured duration, resolves symbols, and
-/// generates output files.
 pub async fn run_profiler(config: Config) -> Result<()> {
+    config.validate().context("Invalid configuration")?;
+
+    match config.mode {
+        config::ProfileMode::Cpu => run_cpu_profiler(config).await,
+        config::ProfileMode::Lock => run_lock_profiler(config).await,
+        config::ProfileMode::Syscall => run_syscall_profiler(config).await,
+        config::ProfileMode::All => {
+            // validating multiple modes concurrently might be tricky with eBPF resources (maps, etc)
+            // For now, let's just run them sequentially or pick one?
+            // The plan says "All->tokio::join! all three".
+            // However, they all print to stdout/logs.
+            // And they might need separate output files?
+            // Existing config has single output_path.
+            // I'll implement sequential or just error for now, or just implement CPU as fallback?
+            // The plan says "All->tokio::join! all three".
+            // But they share Config which has one output path.
+            // We should probably derive output paths like "output.lock.svg", "output.cpu.svg".
+            info!("Running all profilers concurrently");
+            
+            // Clone config for each
+            let mut cpu_config = config.clone();
+            cpu_config.output_path = format!("{}.cpu.svg", config.output_path);
+            if let Some(ref json) = config.json_output {
+                cpu_config.json_output = Some(format!("{}.cpu.json", json));
+            }
+
+            let mut lock_config = config.clone();
+            lock_config.output_path = format!("{}.lock.svg", config.output_path);
+            if let Some(ref json) = config.json_output {
+                lock_config.json_output = Some(format!("{}.lock.json", json));
+            }
+
+            let mut syscall_config = config.clone();
+            syscall_config.output_path = format!("{}.syscall.txt", config.output_path);
+            if let Some(ref json) = config.json_output {
+                syscall_config.json_output = Some(format!("{}.syscall.json", json));
+            }
+
+            let cpu_future = run_cpu_profiler(cpu_config);
+            let lock_future = run_lock_profiler(lock_config);
+            let syscall_future = run_syscall_profiler(syscall_config);
+
+            let (cpu_res, lock_res, syscall_res) = tokio::join!(cpu_future, lock_future, syscall_future);
+            
+            cpu_res.context("CPU profiler failed")?;
+            lock_res.context("Lock profiler failed")?;
+            syscall_res.context("Syscall profiler failed")?;
+            
+            Ok(())
+        }
+    }
+}
+
+async fn run_cpu_profiler(config: Config) -> Result<()> {
     use aya::maps::{perf::AsyncPerfEventArray, StackTraceMap};
     use aya::util::online_cpus;
     use bytes::BytesMut;
@@ -29,25 +80,17 @@ pub async fn run_profiler(config: Config) -> Result<()> {
     use collector::symbols::SymbolResolver;
     use ebpf::cpu_profiler::CpuProfiler;
 
-    config.validate().context("Invalid configuration")?;
-
     info!(
-        "Profiling {} for {} seconds at {} Hz",
-        config
-            .target_pid
-            .map(|p| format!("PID {}", p))
-            .unwrap_or_else(|| "all processes".to_string()),
+        "Profiling CPU for {} seconds at {} Hz",
         config.duration.as_secs(),
         config.sample_rate_hz
     );
 
     // 1. Load and start eBPF program
-    info!("Loading eBPF CPU profiler");
     let mut profiler = CpuProfiler::new(config.sample_rate_hz)
         .context("Failed to create CPU profiler")?;
 
     profiler.set_target_pid(config.target_pid);
-
     profiler.start().context("Failed to start profiler")?;
 
     // 2. Set up event collector
@@ -55,38 +98,25 @@ pub async fn run_profiler(config: Config) -> Result<()> {
 
     // 3. Get maps for reading events and stacks
     let bpf = profiler.bpf_mut();
-
     let events_map = bpf.take_map("EVENTS").context("Failed to get EVENTS map")?;
     let mut perf_array = AsyncPerfEventArray::try_from(events_map)?;
 
     let stacks_map = bpf.take_map("STACKS").context("Failed to get STACKS map")?;
     let stack_map = Arc::new(StackTraceMap::try_from(stacks_map)?);
 
-    info!(
-        "Profiler started, collecting samples for {} seconds...",
-        config.duration.as_secs()
-    );
-
     // 4. Spawn per-CPU reader tasks
     let cpus = online_cpus().map_err(|(msg, e)| anyhow::anyhow!("{}: {}", msg, e))?;
-    info!("Reading events from {} CPUs", cpus.len());
-
     let mut handles = Vec::new();
 
     for cpu_id in cpus {
-        let mut buf = perf_array
-            .open(cpu_id, None)
-            .context(format!("Failed to open perf buffer for CPU {}", cpu_id))?;
+        let mut buf = perf_array.open(cpu_id, None)?;
+        let collector = collector.clone();
+        let stack_map = stack_map.clone();
 
-        let collector_clone = collector.clone();
-        let stack_map_clone = stack_map.clone();
-
-        let handle = tokio::spawn(async move {
+        handles.push(tokio::spawn(async move {
             let mut buffers = (0..10)
                 .map(|_| BytesMut::with_capacity(core::mem::size_of::<SampleEvent>() + 64))
                 .collect::<Vec<_>>();
-
-            let mut events_read: u64 = 0;
 
             loop {
                 match buf.read_events(&mut buffers).await {
@@ -94,110 +124,216 @@ pub async fn run_profiler(config: Config) -> Result<()> {
                         for i in 0..events.read {
                             let buf_ref = &buffers[i];
                             if buf_ref.len() >= core::mem::size_of::<SampleEvent>() {
-                                let event = unsafe {
-                                    &*(buf_ref.as_ptr() as *const SampleEvent)
-                                };
-                                let mut coll = collector_clone.lock().await;
-                                if let Err(e) = coll.process_event(event, &stack_map_clone) {
-                                    debug!("Error processing event on CPU {}: {}", cpu_id, e);
+                                let event = unsafe { &*(buf_ref.as_ptr() as *const SampleEvent) };
+                                let mut coll = collector.lock().await;
+                                if let Err(e) = coll.process_event(event, &stack_map) {
+                                    debug!("Error processing event: {}", e);
                                 }
-                                events_read += 1;
                             }
                         }
-                        if events.lost > 0 {
-                            warn!("CPU {}: lost {} events", cpu_id, events.lost);
-                        }
                     }
-                    Err(e) => {
-                        debug!("CPU {} perf buffer read error: {}", cpu_id, e);
-                        break;
-                    }
+                    Err(_) => break,
                 }
             }
-
-            events_read
-        });
-
-        handles.push(handle);
+        }));
     }
 
-    // 5. Wait for the profiling duration
+    // 5. Wait
     tokio::time::sleep(config.duration).await;
 
-    info!("Collection period ended");
-
-    // 6. Cancel reader tasks
+    // 6. Cleanup
     for handle in &handles {
         handle.abort();
     }
+    profiler.stop()?;
 
-    let mut total_events: u64 = 0;
-    for handle in handles {
-        match handle.await {
-            Ok(count) => total_events += count,
-            Err(_) => {} // Task was aborted, that's expected
+    let collector = Arc::try_unwrap(collector).unwrap().into_inner();
+    let mut profile = collector.build_profile()?;
+
+    // 7. Symbolize & Output
+    if profile.total_samples > 0 {
+        let mut resolver = SymbolResolver::new();
+        resolver.symbolize_profile(&mut profile, config.target_pid)?;
+        output::flamegraph::generate_flamegraph(&profile, &config.output_path)?;
+        
+        if let Some(json_path) = &config.json_output {
+            output::json::generate_json(&profile, json_path)?;
         }
     }
 
-    // Stop profiler
-    profiler.stop().context("Failed to stop profiler")?;
+    Ok(())
+}
+
+async fn run_lock_profiler(config: Config) -> Result<()> {
+    use aya::maps::{perf::AsyncPerfEventArray, StackTraceMap};
+    use aya::util::online_cpus;
+    use bytes::BytesMut;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use collector::lock::{LockCollector, LockEventBpf};
+    use collector::symbols::SymbolResolver;
+    use ebpf::lock_profiler::LockProfiler;
+
+    info!("Profiling lock contention for {} seconds", config.duration.as_secs());
+
+    let mut profiler = LockProfiler::new()?;
+    profiler.set_target_pid(config.target_pid);
+    profiler.start()?;
+
+    let collector = Arc::new(Mutex::new(LockCollector::new()));
+    let bpf = profiler.bpf_mut();
+    
+    let events_map = bpf.take_map("LOCK_EVENTS").context("Failed to get LOCK_EVENTS map")?;
+    let mut perf_array = AsyncPerfEventArray::try_from(events_map)?;
+
+    let stacks_map = bpf.take_map("LOCK_STACKS").context("Failed to get LOCK_STACKS map")?;
+    let stack_map = Arc::new(StackTraceMap::try_from(stacks_map)?);
+
+    let cpus = online_cpus().map_err(|(msg, e)| anyhow::anyhow!("{}: {}", msg, e))?;
+    let mut handles = Vec::new();
+
+    for cpu_id in cpus {
+        let mut buf = perf_array.open(cpu_id, None)?;
+        let collector = collector.clone();
+        let stack_map = stack_map.clone();
+
+        handles.push(tokio::spawn(async move {
+            let mut buffers = (0..10)
+                .map(|_| BytesMut::with_capacity(core::mem::size_of::<LockEventBpf>() + 64))
+                .collect::<Vec<_>>();
+
+            loop {
+                match buf.read_events(&mut buffers).await {
+                    Ok(events) => {
+                        for i in 0..events.read {
+                            let buf_ref = &buffers[i];
+                            if buf_ref.len() >= core::mem::size_of::<LockEventBpf>() {
+                                let event = unsafe { &*(buf_ref.as_ptr() as *const LockEventBpf) };
+                                let mut coll = collector.lock().await;
+                                if let Err(e) = coll.process_event(event, &stack_map) {
+                                    debug!("Error processing lock event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }));
+    }
+
+
+    tokio::time::sleep(config.duration).await;
+
+    // Abort all tasks and wait for them to finish
+    for handle in &handles {
+        handle.abort();
+    }
+    
+    // Wait for all tasks to complete
+    for handle in handles {
+        let _ = handle.await;
+    }
+    
+    profiler.stop();
 
     let collector = Arc::try_unwrap(collector)
-        .map_err(|_| anyhow::anyhow!("Failed to unwrap collector"))?
+        .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
         .into_inner();
+    let mut profile = collector.build_profile()?;
 
-    info!(
-        "Collection complete. Read {} events, collected {} samples",
-        total_events,
-        collector.sample_count()
-    );
-
-    // 7. Build profile from collected samples
-    let mut profile = collector
-        .build_profile()
-        .context("Failed to build profile")?;
-
-    info!("Profile built with {} unique stacks", profile.samples.len());
-
-    // 8. Symbolize the profile
-    if profile.total_samples > 0 {
-        info!("Resolving symbols...");
+    if profile.total_events > 0 {
         let mut resolver = SymbolResolver::new();
-        resolver
-            .symbolize_profile(&mut profile, config.target_pid)
-            .context("Failed to symbolize profile")?;
-
-        info!("Resolved {} symbols", resolver.cache_size());
-    } else {
-        warn!("No samples collected - check if profiler has permissions");
+        resolver.symbolize_lock_profile(&mut profile, config.target_pid)?;
+        output::flamegraph::generate_lock_flamegraph(&profile, &config.output_path)?;
+        
+        if let Some(json_path) = &config.json_output {
+            output::json::generate_lock_json(&profile, json_path)?;
+        }
     }
 
-    // 9. Generate flamegraph output
-    if profile.total_samples > 0 {
-        info!("Generating flamegraph...");
-        output::flamegraph::generate_flamegraph(&profile, &config.output_path)
-            .context("Failed to generate flamegraph")?;
+    Ok(())
+}
 
-        info!("Flamegraph written to: {}", config.output_path);
+async fn run_syscall_profiler(config: Config) -> Result<()> {
+    use aya::maps::perf::AsyncPerfEventArray;
+    use aya::util::online_cpus;
+    use bytes::BytesMut;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use collector::syscall::{SyscallCollector, SyscallEventBpf};
+    use ebpf::syscall_tracer::SyscallTracer;
 
-        // 10. Generate JSON output if requested
+    info!("Tracing syscalls for {} seconds", config.duration.as_secs());
+
+    let mut tracer = SyscallTracer::new()?;
+    tracer.set_target_pid(config.target_pid);
+    tracer.start()?;
+
+    let collector = Arc::new(Mutex::new(SyscallCollector::new()));
+    let bpf = tracer.bpf_mut();
+    
+    let events_map = bpf.take_map("SYSCALL_EVENTS").context("Failed to get SYSCALL_EVENTS map")?;
+    let mut perf_array = AsyncPerfEventArray::try_from(events_map)?;
+
+    let cpus = online_cpus().map_err(|(msg, e)| anyhow::anyhow!("{}: {}", msg, e))?;
+    let mut handles = Vec::new();
+
+    for cpu_id in cpus {
+        let mut buf = perf_array.open(cpu_id, None)?;
+        let collector = collector.clone();
+
+        handles.push(tokio::spawn(async move {
+            let mut buffers = (0..10)
+                .map(|_| BytesMut::with_capacity(core::mem::size_of::<SyscallEventBpf>() + 64))
+                .collect::<Vec<_>>();
+
+            loop {
+                match buf.read_events(&mut buffers).await {
+                    Ok(events) => {
+                        for i in 0..events.read {
+                            let buf_ref = &buffers[i];
+                            if buf_ref.len() >= core::mem::size_of::<SyscallEventBpf>() {
+                                let event = unsafe { &*(buf_ref.as_ptr() as *const SyscallEventBpf) };
+                                let mut coll = collector.lock().await;
+                                if let Err(e) = coll.process_event(event) {
+                                    debug!("Error processing syscall event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }));
+    }
+
+
+    tokio::time::sleep(config.duration).await;
+
+    // Abort all tasks and wait for them to finish
+    for handle in &handles {
+        handle.abort();
+    }
+    
+    // Wait for all tasks to complete
+    for handle in handles {
+        let _ = handle.await;
+    }
+    
+    tracer.stop();
+
+    let collector = Arc::try_unwrap(collector)
+        .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
+        .into_inner();
+    let profile = collector.build_profile()?;
+
+    if profile.total_events > 0 {
+        output::histogram::generate_syscall_histogram(&profile, &config.output_path)?;
+        
         if let Some(json_path) = &config.json_output {
-            info!("Generating JSON output...");
-            output::json::generate_json(&profile, json_path)
-                .context("Failed to generate JSON output")?;
-            info!("JSON output written to: {}", json_path);
+            output::json::generate_syscall_json(&profile, json_path)?;
         }
-
-        info!("Profiling complete!");
-        info!("Total samples: {}", profile.total_samples);
-        info!("Unique stacks: {}", profile.samples.len());
-        info!(
-            "Duration: {:.2}s",
-            profile.duration_ns() as f64 / 1_000_000_000.0
-        );
-    } else {
-        warn!("No samples collected - no output generated");
-        warn!("Make sure you're running as root and the target process is active");
     }
 
     Ok(())

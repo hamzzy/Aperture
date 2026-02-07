@@ -55,6 +55,7 @@ pub struct LockEvent {
     pub hold_time_ns: u64,
     pub wait_time_ns: u64,
     pub stack_trace: StackTrace,
+    pub comm: String,
 }
 
 /// Syscall event (Phase 2)
@@ -66,6 +67,7 @@ pub struct SyscallEvent {
     pub syscall_id: u32,
     pub duration_ns: u64,
     pub return_value: i64,
+    pub comm: String,
 }
 
 /// GPU kernel execution event (Phase 4)

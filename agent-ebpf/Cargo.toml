@@ -15,6 +15,14 @@ aya-log-ebpf = "0.1"
 name = "cpu-profiler"
 path = "src/cpu_profiler.rs"
 
+[[bin]]
+name = "lock-profiler"
+path = "src/lock_profiler.rs"
+
+[[bin]]
+name = "syscall-tracer"
+path = "src/syscall_tracer.rs"
+
 [profile.dev]
 opt-level = 3
 debug = false

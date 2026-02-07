@@ -2,9 +2,35 @@
 
 use std::time::Duration;
 
+/// Profiling mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileMode {
+    Cpu,
+    Lock,
+    Syscall,
+    All,
+}
+
+impl std::str::FromStr for ProfileMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "cpu" => Ok(ProfileMode::Cpu),
+            "lock" => Ok(ProfileMode::Lock),
+            "syscall" => Ok(ProfileMode::Syscall),
+            "all" => Ok(ProfileMode::All),
+            _ => anyhow::bail!("Invalid profile mode: {}", s),
+        }
+    }
+}
+
 /// Agent configuration
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Profiling mode
+    pub mode: ProfileMode,
+
     /// Target process ID (None = profile all processes)
     pub target_pid: Option<i32>,
 
@@ -32,12 +58,15 @@ impl Config {
 
     /// Validate configuration
     pub fn validate(&self) -> anyhow::Result<()> {
-        if self.sample_rate_hz == 0 {
-            anyhow::bail!("Sample rate must be greater than 0");
-        }
+        // Sample rate only matters for CPU profiling
+        if matches!(self.mode, ProfileMode::Cpu | ProfileMode::All) {
+            if self.sample_rate_hz == 0 {
+                anyhow::bail!("Sample rate must be greater than 0 for CPU profiling");
+            }
 
-        if self.sample_rate_hz > 10000 {
-            anyhow::bail!("Sample rate too high (max 10000 Hz)");
+            if self.sample_rate_hz > 10000 {
+                anyhow::bail!("Sample rate too high (max 10000 Hz)");
+            }
         }
 
         if self.duration.as_secs() == 0 {
@@ -55,6 +84,7 @@ mod tests {
     #[test]
     fn test_sample_period_calculation() {
         let config = Config {
+            mode: ProfileMode::Cpu,
             target_pid: None,
             sample_rate_hz: 100,
             duration: Duration::from_secs(10),
@@ -68,6 +98,7 @@ mod tests {
     #[test]
     fn test_config_validation() {
         let valid = Config {
+            mode: ProfileMode::Cpu,
             target_pid: None,
             sample_rate_hz: 99,
             duration: Duration::from_secs(30),
@@ -78,6 +109,7 @@ mod tests {
         assert!(valid.validate().is_ok());
 
         let invalid = Config {
+            mode: ProfileMode::Cpu,
             target_pid: None,
             sample_rate_hz: 0,
             duration: Duration::from_secs(30),
@@ -91,6 +123,7 @@ mod tests {
     #[test]
     fn test_validation_rate_too_high() {
         let config = Config {
+            mode: ProfileMode::Cpu,
             target_pid: None,
             sample_rate_hz: 10001,
             duration: Duration::from_secs(5),
@@ -103,6 +136,7 @@ mod tests {
     #[test]
     fn test_validation_max_rate_ok() {
         let config = Config {
+            mode: ProfileMode::Cpu,
             target_pid: None,
             sample_rate_hz: 10000,
             duration: Duration::from_secs(5),
@@ -115,6 +149,7 @@ mod tests {
     #[test]
     fn test_validation_zero_duration() {
         let config = Config {
+            mode: ProfileMode::Cpu,
             target_pid: None,
             sample_rate_hz: 99,
             duration: Duration::from_secs(0),
@@ -127,6 +162,7 @@ mod tests {
     #[test]
     fn test_sample_period_zero_rate() {
         let config = Config {
+            mode: ProfileMode::Cpu,
             target_pid: None,
             sample_rate_hz: 0,
             duration: Duration::from_secs(1),

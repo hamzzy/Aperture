@@ -25,6 +25,7 @@ pub struct SampleEvent {
 unsafe impl aya::Pod for SampleEvent {}
 
 /// CPU event collector
+#[derive(Debug)]
 pub struct CpuCollector {
     /// Collected samples
     samples: Vec<CpuSample>,

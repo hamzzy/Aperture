@@ -167,3 +167,150 @@ mod tests {
         assert!(result.is_err()); // Expected to fail until implemented
     }
 }
+
+use aya::programs::trace_point::TracePointLinkId;
+use aya::programs::raw_trace_point::RawTracePointLinkId;
+use aya::programs::{TracePoint, RawTracePoint};
+
+/// Storage for tracepoint links
+pub struct TracepointLinks {
+    links: Vec<TracePointLinkId>,
+}
+
+impl TracepointLinks {
+    pub fn new() -> Self {
+        Self { links: Vec::new() }
+    }
+
+    pub fn add(&mut self, link: TracePointLinkId) {
+        self.links.push(link);
+    }
+}
+
+/// Storage for raw tracepoint links
+pub struct RawTracepointLinks {
+    links: Vec<RawTracePointLinkId>,
+}
+
+impl RawTracepointLinks {
+    pub fn new() -> Self {
+        Self { links: Vec::new() }
+    }
+
+    pub fn add(&mut self, link: RawTracePointLinkId) {
+        self.links.push(link);
+    }
+}
+
+/// Load the lock profiler eBPF program
+pub fn load_lock_profiler() -> Result<Ebpf> {
+    use aya::EbpfLoader;
+    info!("Loading lock profiler eBPF program");
+
+    #[cfg(debug_assertions)]
+    {
+        use std::path::PathBuf;
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("../target/bpfel-unknown-none/debug/lock-profiler");
+        if path.exists() {
+            return EbpfLoader::new().load_file(&path).context("Failed to load lock profiler");
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let bpf_data = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../target/bpfel-unknown-none/release/lock-profiler"
+        ));
+        EbpfLoader::new().allow_unsupported_maps().load(bpf_data).context("Failed to load lock profiler")
+    }
+    
+    // Fallback for debug if file not found
+    #[cfg(debug_assertions)]
+    anyhow::bail!("Lock profiler binary not found")
+}
+
+/// Attach lock profiler
+pub fn attach_lock_profiler(
+    bpf: &mut Ebpf,
+    _target_pid: Option<i32>,
+) -> Result<TracepointLinks> {
+    let mut links = TracepointLinks::new();
+
+    // Attach sys_enter_futex
+    let program: &mut TracePoint = bpf
+        .program_mut("sys_enter_futex")
+        .context("sys_enter_futex not found")?
+        .try_into()
+        .context("Not a TracePoint")?;
+    program.load()?;
+    links.add(program.attach("syscalls", "sys_enter_futex")?);
+
+    // Attach sys_exit_futex
+    let program: &mut TracePoint = bpf
+        .program_mut("sys_exit_futex")
+        .context("sys_exit_futex not found")?
+        .try_into()
+        .context("Not a TracePoint")?;
+    program.load()?;
+    links.add(program.attach("syscalls", "sys_exit_futex")?);
+
+    Ok(links)
+}
+
+/// Load the syscall tracer eBPF program
+pub fn load_syscall_tracer() -> Result<Ebpf> {
+    use aya::EbpfLoader;
+    info!("Loading syscall tracer eBPF program");
+
+    #[cfg(debug_assertions)]
+    {
+        use std::path::PathBuf;
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("../target/bpfel-unknown-none/debug/syscall-tracer");
+        if path.exists() {
+            return EbpfLoader::new().load_file(&path).context("Failed to load syscall tracer");
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let bpf_data = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../target/bpfel-unknown-none/release/syscall-tracer"
+        ));
+        EbpfLoader::new().allow_unsupported_maps().load(bpf_data).context("Failed to load syscall tracer")
+    }
+
+    #[cfg(debug_assertions)]
+    anyhow::bail!("Syscall tracer binary not found")
+}
+
+/// Attach syscall tracer
+pub fn attach_syscall_tracer(
+    bpf: &mut Ebpf,
+    _target_pid: Option<i32>,
+) -> Result<RawTracepointLinks> {
+    let mut links = RawTracepointLinks::new();
+
+    // Attach sys_enter
+    let program: &mut RawTracePoint = bpf
+        .program_mut("sys_enter")
+        .context("sys_enter not found")?
+        .try_into()
+        .context("Not a RawTracePoint")?;
+    program.load()?;
+    links.add(program.attach("sys_enter")?);
+
+    // Attach sys_exit
+    let program: &mut RawTracePoint = bpf
+        .program_mut("sys_exit")
+        .context("sys_exit not found")?
+        .try_into()
+        .context("Not a RawTracePoint")?;
+    program.load()?;
+    links.add(program.attach("sys_exit")?);
+
+    Ok(links)
+}

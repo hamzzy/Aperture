@@ -9,13 +9,41 @@ use std::fs::File;
 use std::io::BufWriter;
 use tracing::info;
 
+use std::collections::HashMap;
+use aperture_shared::types::profile::{LockProfile, Stack};
+
 /// Generate a flamegraph from profile data
 pub fn generate_flamegraph(profile: &Profile, output_path: &str) -> Result<()> {
+    generate_flamegraph_from_stacks(
+        &profile.samples,
+        output_path,
+        "CPU Profile Flamegraph",
+        "samples",
+    )
+}
+
+/// Generate a flamegraph from lock profile data
+pub fn generate_lock_flamegraph(profile: &LockProfile, output_path: &str) -> Result<()> {
+    let stacks = profile.as_weighted_stacks();
+    generate_flamegraph_from_stacks(
+        &stacks,
+        output_path,
+        "Lock Contention Flamegraph",
+        "ns",
+    )
+}
+
+fn generate_flamegraph_from_stacks(
+    stacks: &HashMap<Stack, u64>,
+    output_path: &str,
+    title: &str,
+    count_name: &str,
+) -> Result<()> {
     info!("Generating flamegraph: {}", output_path);
 
-    // Convert Profile to inferno's folded stack format
+    // Convert stacks to inferno's folded stack format
     let mut folded_lines = Vec::new();
-    for (stack, count) in &profile.samples {
+    for (stack, count) in stacks {
         // Build folded stack line: func1;func2;func3 count
         let mut frame_names = Vec::new();
 
@@ -49,8 +77,8 @@ pub fn generate_flamegraph(profile: &Profile, output_path: &str) -> Result<()> {
 
     // Configure flamegraph options
     let mut options = flamegraph::Options::default();
-    options.title = "CPU Profile Flamegraph".to_string();
-    options.count_name = "samples".to_string();
+    options.title = title.to_string();
+    options.count_name = count_name.to_string();
     options.flame_chart = false; // Use regular flamegraph (aggregated)
 
     // Convert folded lines to reader

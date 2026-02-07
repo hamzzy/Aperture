@@ -5,6 +5,10 @@ use clap::Args;
 
 #[derive(Args, Debug)]
 pub struct ProfileArgs {
+    /// Profiling mode (cpu, lock, syscall, all)
+    #[arg(short, long, default_value = "cpu")]
+    pub mode: String,
+
     /// Process ID to profile
     #[arg(short, long)]
     pub pid: Option<i32>,
@@ -35,7 +39,13 @@ pub async fn run(args: ProfileArgs) -> Result<()> {
     let duration = aperture_shared::utils::parse_duration(&args.duration)
         .context("Failed to parse duration")?;
 
+    // Parse mode
+    use std::str::FromStr;
+    use aperture_agent::ProfileMode;
+    let mode = ProfileMode::from_str(&args.mode)?;
+
     let config = aperture_agent::Config {
+        mode,
         target_pid: args.pid,
         sample_rate_hz: args.sample_rate,
         duration,

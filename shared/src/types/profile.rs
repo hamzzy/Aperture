@@ -111,6 +111,146 @@ impl Profile {
     }
 }
 
+/// Statistics for lock contention
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LockContentionStats {
+    pub count: u64,
+    pub total_wait_ns: u64,
+    pub max_wait_ns: u64,
+    pub min_wait_ns: u64,
+}
+
+impl Default for LockContentionStats {
+    fn default() -> Self {
+        Self {
+            count: 0,
+            total_wait_ns: 0,
+            max_wait_ns: 0,
+            min_wait_ns: u64::MAX,
+        }
+    }
+}
+
+/// Profile of lock contention events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LockProfile {
+    pub start_time: u64,
+    pub end_time: u64,
+    // (lock_addr, stack) -> stats
+    pub contentions: HashMap<(u64, Stack), LockContentionStats>,
+    pub total_events: u64,
+}
+
+impl LockProfile {
+    pub fn new(start_time: u64) -> Self {
+        Self {
+            start_time,
+            end_time: 0,
+            contentions: HashMap::new(),
+            total_events: 0,
+        }
+    }
+
+    pub fn add_contention(&mut self, lock_addr: u64, stack: Stack, wait_ns: u64) {
+        let stats = self
+            .contentions
+            .entry((lock_addr, stack))
+            .or_default();
+        
+        stats.count += 1;
+        stats.total_wait_ns += wait_ns;
+        stats.max_wait_ns = stats.max_wait_ns.max(wait_ns);
+        stats.min_wait_ns = stats.min_wait_ns.min(wait_ns);
+        self.total_events += 1;
+    }
+
+    pub fn as_weighted_stacks(&self) -> HashMap<Stack, u64> {
+        let mut stacks = HashMap::new();
+        for ((_, stack), stats) in &self.contentions {
+            *stacks.entry(stack.clone()).or_insert(0) += stats.total_wait_ns;
+        }
+        stacks
+    }
+}
+
+/// Statistics for system calls
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyscallStats {
+    pub syscall_id: u32,
+    pub name: String,
+    pub count: u64,
+    pub total_duration_ns: u64,
+    pub max_duration_ns: u64,
+    pub min_duration_ns: u64,
+    pub error_count: u64,
+    // Power-of-2 buckets from 1ns to ~1s (30 buckets)
+    pub latency_histogram: Vec<u64>,
+}
+
+impl SyscallStats {
+    pub fn new(id: u32, name: String) -> Self {
+        Self {
+            syscall_id: id,
+            name,
+            count: 0,
+            total_duration_ns: 0,
+            max_duration_ns: 0,
+            min_duration_ns: u64::MAX,
+            error_count: 0,
+            latency_histogram: vec![0; 30],
+        }
+    }
+}
+
+/// Profile of system calls
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyscallProfile {
+    pub start_time: u64,
+    pub end_time: u64,
+    pub syscalls: HashMap<u32, SyscallStats>,
+    pub total_events: u64,
+}
+
+impl SyscallProfile {
+    pub fn new(start_time: u64) -> Self {
+        Self {
+            start_time,
+            end_time: 0,
+            syscalls: HashMap::new(),
+            total_events: 0,
+        }
+    }
+
+    pub fn add_syscall(&mut self, id: u32, name: &str, duration_ns: u64, return_value: i64) {
+        let stats = self
+            .syscalls
+            .entry(id)
+            .or_insert_with(|| SyscallStats::new(id, name.to_string()));
+
+        stats.count += 1;
+        stats.total_duration_ns += duration_ns;
+        stats.max_duration_ns = stats.max_duration_ns.max(duration_ns);
+        stats.min_duration_ns = stats.min_duration_ns.min(duration_ns);
+
+        if return_value < 0 {
+            stats.error_count += 1;
+        }
+
+        // Calculate bucket: log2(duration_ns)
+        // 0..1ns -> 0
+        // 2..3ns -> 1
+        // ...
+        let bucket = if duration_ns == 0 {
+            0
+        } else {
+            (63 - duration_ns.leading_zeros()).min(29) as usize
+        };
+        stats.latency_histogram[bucket] += 1;
+        
+        self.total_events += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

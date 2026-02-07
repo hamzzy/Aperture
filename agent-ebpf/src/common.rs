@@ -26,3 +26,13 @@ pub fn in_kernel_context() -> bool {
     // TODO: Implement kernel context detection
     false
 }
+
+/// Futex operations
+pub const FUTEX_WAIT: u32 = 0;
+pub const FUTEX_LOCK_PI: u32 = 6;
+pub const FUTEX_WAIT_BITSET: u32 = 9;
+pub const FUTEX_CMD_MASK: u32 = !128; // ~(FUTEX_PRIVATE_FLAG | FUTEX_CLOCK_REALTIME)
+
+/// Map sizes
+pub const MAX_TRACKED_TIDS: u32 = 16384;
+
