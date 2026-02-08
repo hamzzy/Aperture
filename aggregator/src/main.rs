@@ -91,8 +91,15 @@ async fn main() -> Result<()> {
         .parse()
         .context("Invalid admin listen address")?;
 
+    let store_for_admin = store_handle.clone();
     let admin_handle = tokio::spawn(async move {
-        if let Err(e) = aperture_aggregator::server::http::serve_admin(admin_addr, buffer).await {
+        if let Err(e) = aperture_aggregator::server::http::serve_admin(
+            admin_addr,
+            buffer,
+            store_for_admin,
+        )
+        .await
+        {
             tracing::error!("Admin HTTP server error: {}", e);
         }
     });

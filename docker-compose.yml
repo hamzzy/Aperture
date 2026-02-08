@@ -1,5 +1,8 @@
-# ClickHouse for Aperture aggregator E2E tests (Phase 6)
-# Run: ./scripts/e2e-clickhouse.sh
+# Aperture: ClickHouse + Aggregator + Agent (Phase 6 / Phase 8)
+# Run: docker compose up -d
+# Then run the Phase 8 UI: cd gpu-whisperer-ui && npm run dev
+# API is at http://127.0.0.1:9090 (proxy from frontend /api)
+# Agent runs on Linux in Docker, pushes to aggregator → ClickHouse.
 
 services:
   clickhouse:
@@ -10,7 +13,6 @@ services:
       - "9000:9000"   # Native
     environment:
       CLICKHOUSE_DB: aperture
-      # 23.8: set password so we can connect from host (default user)
       CLICKHOUSE_PASSWORD: e2etest
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://localhost:8123/ping"]
@@ -18,3 +20,45 @@ services:
       timeout: 2s
       retries: 10
       start_period: 5s
+
+  aggregator:
+    build:
+      context: .
+      dockerfile: Dockerfile.aggregator
+    image: aperture-aggregator
+    container_name: aperture-aggregator
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      APERTURE_CLICKHOUSE_ENDPOINT: "http://clickhouse:8123"
+      APERTURE_CLICKHOUSE_DATABASE: aperture
+      APERTURE_CLICKHOUSE_PASSWORD: e2etest
+      APERTURE_ADMIN_LISTEN: "0.0.0.0:9090"
+      APERTURE_AGGREGATOR_LISTEN: "0.0.0.0:50051"
+    ports:
+      - "9090:9090"   # Admin HTTP + REST API (Phase 8)
+      - "50051:50051" # gRPC
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9090/healthz || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 10s
+
+  # Agent: run in Docker (optional). If you see "error parsing ELF data", run the agent
+  # in OrbStack VM instead: ./scripts/run-agent-orb.sh
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    image: aperture-agent
+    platform: linux/amd64
+    container_name: aperture-agent
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    privileged: true
+    pid: "host"
+    command: ["--aggregator", "http://aggregator:50051", "--mode", "cpu", "--duration", "24h"]
+    restart: "on-failure"

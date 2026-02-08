@@ -64,20 +64,45 @@ pub fn load_cpu_profiler() -> Result<Ebpf> {
         }
     }
 
-    // For release builds, embed the bytecode
+    // Release: try file first (Docker copies eBPF to /usr/local/share/aperture), then embedded
     #[cfg(not(debug_assertions))]
     {
-        let bpf_data = include_bytes!(concat!(
+        let file_paths = [
+            std::path::Path::new("/usr/local/share/aperture/cpu-profiler"),
+            std::path::Path::new("cpu-profiler"),
+        ];
+        if let Some(path) = std::env::var_os("APERTURE_EBPF_CPU_PROFILER").map(std::path::PathBuf::from) {
+            if path.exists() {
+                info!("Loading eBPF from APERTURE_EBPF_CPU_PROFILER: {:?}", path);
+                let bpf = EbpfLoader::new()
+                    .allow_unsupported_maps()
+                    .load_file(&path)
+                    .context("Failed to load eBPF program from file")?;
+                info!("Successfully loaded CPU profiler eBPF program from file");
+                return Ok(bpf);
+            }
+        }
+        for path in &file_paths {
+            if path.exists() {
+                info!("Loading eBPF from file: {:?}", path);
+                let bpf = EbpfLoader::new()
+                    .allow_unsupported_maps()
+                    .load_file(path)
+                    .context("Failed to load eBPF program from file")?;
+                info!("Successfully loaded CPU profiler eBPF program from file");
+                return Ok(bpf);
+            }
+        }
+        // Fallback: embedded bytecode (aligned for ELF parsing)
+        let bpf_data = aya::include_bytes_aligned!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../target/bpfel-unknown-none/release/cpu-profiler"
         ));
-
-        // Load the eBPF program
         let bpf = EbpfLoader::new()
             .allow_unsupported_maps()
             .load(bpf_data)
             .context("Failed to load eBPF program")?;
-        info!("Successfully loaded CPU profiler eBPF program");
+        info!("Successfully loaded CPU profiler eBPF program (embedded)");
         Ok(bpf)
     }
 }
@@ -229,7 +254,7 @@ pub fn load_lock_profiler() -> Result<Ebpf> {
 
     #[cfg(not(debug_assertions))]
     {
-        let bpf_data = include_bytes!(concat!(
+        let bpf_data = aya::include_bytes_aligned!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../target/bpfel-unknown-none/release/lock-profiler"
         ));
@@ -301,7 +326,7 @@ pub fn load_syscall_tracer() -> Result<Ebpf> {
 
     #[cfg(not(debug_assertions))]
     {
-        let bpf_data = include_bytes!(concat!(
+        let bpf_data = aya::include_bytes_aligned!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../target/bpfel-unknown-none/release/syscall-tracer"
         ));

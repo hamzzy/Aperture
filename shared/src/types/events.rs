@@ -43,6 +43,14 @@ pub struct CpuSample {
 
     /// Process name (comm)
     pub comm: String,
+
+    /// Pre-resolved symbol names for user_stack IPs (parallel array, same length)
+    #[serde(default)]
+    pub user_stack_symbols: Vec<Option<String>>,
+
+    /// Pre-resolved symbol names for kernel_stack IPs (parallel array, same length)
+    #[serde(default)]
+    pub kernel_stack_symbols: Vec<Option<String>>,
 }
 
 /// Lock contention event
@@ -56,6 +64,10 @@ pub struct LockEvent {
     pub wait_time_ns: u64,
     pub stack_trace: StackTrace,
     pub comm: String,
+
+    /// Pre-resolved symbol names for stack_trace IPs (parallel array, same length)
+    #[serde(default)]
+    pub stack_symbols: Vec<Option<String>>,
 }
 
 /// Syscall event
@@ -126,6 +138,8 @@ mod tests {
             user_stack: vec![0x400000, 0x400100],
             kernel_stack: vec![],
             comm: "test".to_string(),
+            user_stack_symbols: vec![],
+            kernel_stack_symbols: vec![],
         };
 
         let json = serde_json::to_string(&sample).unwrap();

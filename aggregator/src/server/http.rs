@@ -1,24 +1,35 @@
-//! Admin HTTP server for health checks and metrics (Phase 7)
+//! Admin HTTP server for health checks, metrics, and REST API (Phase 7–8)
 
 use crate::audit;
 use crate::buffer::InMemoryBuffer;
 use crate::metrics;
+use crate::server::api;
+use crate::storage::BatchStore;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server, StatusCode};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-/// Start the admin HTTP server serving /healthz, /readyz, and /metrics.
+/// Start the admin HTTP server: /healthz, /readyz, /metrics, and /api/*.
 pub async fn serve_admin(
     addr: SocketAddr,
     buffer: Arc<InMemoryBuffer>,
+    store: Option<Arc<dyn BatchStore>>,
 ) -> Result<(), hyper::Error> {
     let make_svc = make_service_fn(move |_| {
         let buffer = buffer.clone();
+        let store = store.clone();
         async move {
             Ok::<_, hyper::Error>(service_fn(move |req: Request<Body>| {
                 let buffer = buffer.clone();
-                async move { handle(req, &buffer) }
+                let store = store.clone();
+                async move {
+                    if req.uri().path().starts_with("/api") {
+                        api::handle_api(req, &buffer, store).await
+                    } else {
+                        handle(req, &buffer)
+                    }
+                }
             }))
         }
     });

@@ -1,0 +1,18 @@
+# Aperture aggregator with ClickHouse storage (Phase 8)
+# Build: docker build -f Dockerfile.aggregator -t aperture-aggregator .
+# Run with ClickHouse: see docker-compose.yml
+
+FROM rust:1-bookworm AS builder
+WORKDIR /app
+
+# Copy full workspace (see .dockerignore to exclude frontend/target)
+COPY . .
+
+# Build only aggregator with clickhouse-storage
+RUN cargo build -p aperture-aggregator --features clickhouse-storage --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates wget && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/aperture-aggregator /usr/local/bin/
+EXPOSE 50051 9090
+ENTRYPOINT ["/usr/local/bin/aperture-aggregator"]

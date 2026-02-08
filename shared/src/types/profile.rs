@@ -57,6 +57,27 @@ impl Stack {
             frames: ips.iter().map(|&ip| Frame::new_unresolved(ip)).collect(),
         }
     }
+
+    /// Create a stack from IPs with optional pre-resolved symbol names.
+    /// `symbols` is a parallel array to `ips`; entries with `Some(name)` populate the frame's function field.
+    pub fn from_ips_with_symbols(ips: &[u64], symbols: &[Option<String>]) -> Self {
+        Self {
+            frames: ips
+                .iter()
+                .enumerate()
+                .map(|(i, &ip)| {
+                    let function = symbols.get(i).and_then(|s| s.clone());
+                    Frame {
+                        ip,
+                        function,
+                        file: None,
+                        line: None,
+                        module: None,
+                    }
+                })
+                .collect(),
+        }
+    }
 }
 
 /// Aggregated profile data for a time period

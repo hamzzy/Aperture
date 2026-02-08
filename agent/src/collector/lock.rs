@@ -100,6 +100,7 @@ impl LockCollector {
             wait_time_ns: event.wait_time_ns,
             stack_trace: frames,
             comm,
+            stack_symbols: vec![],
         };
 
         self.add_event(lock_event);
@@ -160,36 +161,24 @@ mod tests {
         let mut collector = LockCollector::new();
 
         let event1 = LockEvent {
-            timestamp: 1000,
-            pid: 123,
-            tid: 123,
-            lock_addr: 0x1000,
-            hold_time_ns: 0,
-            wait_time_ns: 500,
+            timestamp: 1000, pid: 123, tid: 123, lock_addr: 0x1000,
+            hold_time_ns: 0, wait_time_ns: 500,
             stack_trace: vec![0x400000, 0x400100],
-            comm: "test".to_string(),
+            comm: "test".to_string(), stack_symbols: vec![],
         };
 
         let event2 = LockEvent {
-            timestamp: 2000,
-            pid: 123,
-            tid: 123,
-            lock_addr: 0x1000,
-            hold_time_ns: 0,
-            wait_time_ns: 300,
-            stack_trace: vec![0x400000, 0x400100], // Same stack
-            comm: "test".to_string(),
+            timestamp: 2000, pid: 123, tid: 123, lock_addr: 0x1000,
+            hold_time_ns: 0, wait_time_ns: 300,
+            stack_trace: vec![0x400000, 0x400100],
+            comm: "test".to_string(), stack_symbols: vec![],
         };
 
         let event3 = LockEvent {
-            timestamp: 3000,
-            pid: 124,
-            tid: 124,
-            lock_addr: 0x2000,
-            hold_time_ns: 0,
-            wait_time_ns: 1000,
+            timestamp: 3000, pid: 124, tid: 124, lock_addr: 0x2000,
+            hold_time_ns: 0, wait_time_ns: 1000,
             stack_trace: vec![0x500000],
-            comm: "other".to_string(),
+            comm: "other".to_string(), stack_symbols: vec![],
         };
 
         collector.add_event(event1);

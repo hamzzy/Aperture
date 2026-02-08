@@ -17,6 +17,7 @@ fn test_lock_pipeline() -> Result<()> {
         wait_time_ns: 500,
         stack_trace: vec![0x400000],
         comm: "test".to_string(),
+        stack_symbols: vec![],
     };
     collector.add_event(event);
 

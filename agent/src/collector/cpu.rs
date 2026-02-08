@@ -112,6 +112,8 @@ impl CpuCollector {
             user_stack,
             kernel_stack,
             comm,
+            user_stack_symbols: vec![],
+            kernel_stack_symbols: vec![],
         };
 
         self.add_sample(sample);
@@ -193,106 +195,50 @@ mod tests {
         assert_eq!(collector.sample_count(), 0);
     }
 
+    fn sample(ts: u64, pid: i32, tid: i32, cpu: u32, user: Vec<u64>, kernel: Vec<u64>) -> CpuSample {
+        CpuSample {
+            timestamp: ts, pid, tid, cpu_id: cpu,
+            user_stack: user, kernel_stack: kernel,
+            comm: "test".to_string(),
+            user_stack_symbols: vec![], kernel_stack_symbols: vec![],
+        }
+    }
+
     #[test]
     fn test_add_sample() {
         let mut collector = CpuCollector::new(10_000_000);
-
-        let sample = CpuSample {
-            timestamp: 1234567890,
-            pid: 1000,
-            tid: 1001,
-            cpu_id: 0,
-            user_stack: vec![0x400000, 0x400100],
-            kernel_stack: vec![],
-            comm: "test".to_string(),
-        };
-
-        collector.add_sample(sample);
+        collector.add_sample(sample(1234567890, 1000, 1001, 0, vec![0x400000, 0x400100], vec![]));
         assert_eq!(collector.sample_count(), 1);
     }
 
     #[test]
     fn test_build_profile_aggregates_stacks() {
         let mut collector = CpuCollector::new(10_000_000);
-
-        // Add two identical stacks — should aggregate to count=2
         for _ in 0..2 {
-            collector.add_sample(CpuSample {
-                timestamp: 100,
-                pid: 1,
-                tid: 1,
-                cpu_id: 0,
-                user_stack: vec![0x1000, 0x2000],
-                kernel_stack: vec![],
-                comm: "test".to_string(),
-            });
+            collector.add_sample(sample(100, 1, 1, 0, vec![0x1000, 0x2000], vec![]));
         }
-
-        // Add one different stack
-        collector.add_sample(CpuSample {
-            timestamp: 200,
-            pid: 1,
-            tid: 1,
-            cpu_id: 0,
-            user_stack: vec![0x3000],
-            kernel_stack: vec![],
-            comm: "test".to_string(),
-        });
-
+        collector.add_sample(sample(200, 1, 1, 0, vec![0x3000], vec![]));
         let profile = collector.build_profile().unwrap();
         assert_eq!(profile.total_samples, 3);
-        assert_eq!(profile.samples.len(), 2); // 2 unique stacks
+        assert_eq!(profile.samples.len(), 2);
     }
 
     #[test]
     fn test_build_profile_skips_empty_stacks() {
         let mut collector = CpuCollector::new(10_000_000);
-
-        // Sample with no stack frames at all
-        collector.add_sample(CpuSample {
-            timestamp: 100,
-            pid: 1,
-            tid: 1,
-            cpu_id: 0,
-            user_stack: vec![],
-            kernel_stack: vec![],
-            comm: "test".to_string(),
-        });
-
-        // Sample with frames
-        collector.add_sample(CpuSample {
-            timestamp: 200,
-            pid: 1,
-            tid: 1,
-            cpu_id: 0,
-            user_stack: vec![0x1000],
-            kernel_stack: vec![],
-            comm: "test".to_string(),
-        });
-
+        collector.add_sample(sample(100, 1, 1, 0, vec![], vec![]));
+        collector.add_sample(sample(200, 1, 1, 0, vec![0x1000], vec![]));
         let profile = collector.build_profile().unwrap();
-        assert_eq!(profile.total_samples, 1); // Only the one with frames
+        assert_eq!(profile.total_samples, 1);
     }
 
     #[test]
     fn test_build_profile_combines_user_and_kernel_stacks() {
         let mut collector = CpuCollector::new(10_000_000);
-
-        collector.add_sample(CpuSample {
-            timestamp: 100,
-            pid: 1,
-            tid: 1,
-            cpu_id: 0,
-            user_stack: vec![0x400000],
-            kernel_stack: vec![0xffffffff81000000],
-            comm: "test".to_string(),
-        });
-
+        collector.add_sample(sample(100, 1, 1, 0, vec![0x400000], vec![0xffffffff81000000]));
         let profile = collector.build_profile().unwrap();
         assert_eq!(profile.total_samples, 1);
         assert_eq!(profile.samples.len(), 1);
-
-        // The single stack should have 2 frames (user + kernel)
         let (stack, count) = profile.samples.iter().next().unwrap();
         assert_eq!(*count, 1);
         assert_eq!(stack.frames.len(), 2);

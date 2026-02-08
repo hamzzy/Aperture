@@ -36,6 +36,8 @@ async fn e2e_push_query_and_storage() {
             user_stack: vec![0x400000, 0x400100],
             kernel_stack: vec![],
             comm: "e2e-test".to_string(),
+            user_stack_symbols: vec![],
+            kernel_stack_symbols: vec![],
         })],
     );
     let payload = message.to_bytes().expect("serialize message");

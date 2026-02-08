@@ -25,6 +25,8 @@ fn test_full_pipeline_collect_build_output() {
             user_stack: hot_path.clone(),
             kernel_stack: vec![0xffffffff81000000],
             comm: "myapp".to_string(),
+            user_stack_symbols: vec![],
+            kernel_stack_symbols: vec![],
         });
     }
     for i in 0..20 {
@@ -36,6 +38,8 @@ fn test_full_pipeline_collect_build_output() {
             user_stack: cold_path.clone(),
             kernel_stack: vec![],
             comm: "myapp".to_string(),
+            user_stack_symbols: vec![],
+            kernel_stack_symbols: vec![],
         });
     }
 

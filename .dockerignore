@@ -1,0 +1,30 @@
+# Build output
+target/
+**/target/
+
+# Frontend (not needed for aggregator image)
+gpu-whisperer-ui/
+web/
+
+# Git and IDE
+.git
+.gitignore
+.cursor
+.claude
+*.swp
+*~
+
+# Docs and scripts (optional; keep if small)
+docs/
+scripts/
+*.md
+!aggregator/README.md
+
+# Test / CI
+**/tests/
+*.test.*
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore

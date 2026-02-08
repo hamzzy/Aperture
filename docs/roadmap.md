@@ -196,22 +196,29 @@ This document outlines the development phases and milestones for the Aperture pr
 **Goal**: Build web-based UI for visualization and analysis
 
 **Milestones**:
-- [ ] Frontend development
-  - [ ] Flamegraph viewer
-  - [ ] Timeline visualization
-  - [ ] Comparison view
-- [ ] Backend API
-  - [ ] REST API for queries
+- [x] Frontend development
+  - [x] Flamegraph viewer (Phase 8 API–driven; in `gpu-whisperer-ui`)
+  - [ ] Timeline visualization (placeholder; batches table)
+  - [x] Comparison view (baseline vs comparison, diff table, Swap)
+- [x] Backend API
+  - [x] REST API for queries (`/api/aggregate`, `/api/diff`, `/api/batches`)
+  - [x] Health API (`/api/health`) — buffer utilization, storage status, push/flush metrics
   - [ ] WebSocket for live updates
-- [ ] Features
+- [x] Features
   - [ ] Saved queries
-  - [ ] Dashboards
+  - [x] Dashboards (Dashboard with stats, time range, health panel, event type selector)
+  - [x] Lock contention profile display (contention table with wait times)
+  - [x] Syscall profile display (syscall table with latency, errors)
+  - [x] Settings page (aggregator connection status, auth token config, environment info)
+  - [x] Bearer token auth support in API client (`setAuthToken()`)
   - [ ] Alerting (basic)
 
 **Deliverables**:
-- Web-based UI
-- Interactive visualizations
-- Dashboard capabilities
+- Web-based UI: `gpu-whisperer-ui` (Vite + React + Tailwind + shadcn-style), wired to aggregator admin API
+- Interactive visualizations: flamegraph (regex search, zoom), top functions table, differential comparison
+- Dashboard capabilities: time presets, refresh, batches list, health metrics panel
+- Multi-profile support: CPU, lock contention, syscall event type switching
+- Phase 7 integration: health status badge, auth token config, aggregator metrics display
 
 ## Success Metrics
 
