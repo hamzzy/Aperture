@@ -3,7 +3,7 @@
 //! This file should be auto-generated from /sys/kernel/btf/vmlinux using aya-gen
 //! or bpftool. For now, we include minimal manually-defined types.
 //!
-//! TODO Phase 1: Implement automatic BTF type generation in build.rs
+//! TODO: Implement automatic BTF type generation in build.rs
 
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]

@@ -1,5 +1,5 @@
 /**
- * Format helpers for Phase 8 UI (ns, samples, percentages)
+ * Format helpers for the dashboard UI (ns, samples, percentages)
  */
 
 export function formatNs(ns: number): string {

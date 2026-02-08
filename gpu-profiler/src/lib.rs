@@ -1,4 +1,4 @@
-//! GPU Profiling (Phase 4+)
+//! GPU Profiling
 //!
 //! Profiles GPU workloads including CUDA kernels, memory transfers, and more
 
@@ -42,7 +42,7 @@ pub enum MemoryTransferKind {
     DeviceToDevice,
 }
 
-// TODO Phase 4: Implement GPU profiling
+// TODO: Implement GPU profiling
 // - CUDA support via CUPTI
 // - ROCm support via rocProfiler
 // - Correlate GPU events with CPU events

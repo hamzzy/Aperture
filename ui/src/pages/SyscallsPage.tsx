@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LatencyHistogram } from "@/components/profiler/LatencyHistogram";
-import { usePhase8 } from "@/contexts/Phase8Context";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { useAggregateQuery } from "@/api/queries";
 import { formatNs } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -15,14 +15,14 @@ interface SyscallRow extends SyscallStats {
 }
 
 export default function SyscallsPage() {
-  const phase8 = usePhase8();
-  const { start, end } = phase8?.timeRange ?? { start: 0, end: 0 };
+  const dashboard = useDashboard();
+  const { start, end } = dashboard?.timeRange ?? { start: 0, end: 0 };
   const aggregateQuery = useAggregateQuery({
     time_start_ns: start,
     time_end_ns: end,
     limit: 500,
     event_type: "syscall",
-    enabled: !!phase8,
+    enabled: !!dashboard,
   });
   const data = aggregateQuery.data;
   const syscall = data?.syscall;

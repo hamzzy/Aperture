@@ -1,4 +1,4 @@
-//! Query command implementation (Phase 5+)
+//! Query command implementation
 
 use anyhow::{Context, Result};
 use aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient;

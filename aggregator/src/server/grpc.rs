@@ -1,4 +1,4 @@
-//! gRPC service implementation (Phase 5)
+//! gRPC service implementation
 
 use crate::buffer::InMemoryBuffer;
 use crate::metrics;

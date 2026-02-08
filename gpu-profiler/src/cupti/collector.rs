@@ -1,4 +1,4 @@
-//! CUPTI event collector (Phase 4+)
+//! CUPTI event collector
 
 use crate::{GpuMetric, GpuProfiler};
 use anyhow::Result;
@@ -11,7 +11,7 @@ pub struct CuptiProfiler {
 impl CuptiProfiler {
     /// Create a new CUPTI profiler
     pub fn new() -> Result<Self> {
-        // TODO Phase 4: Initialize CUPTI
+        // TODO: Initialize CUPTI
         // 1. Register callbacks
         // 2. Enable activity kinds (kernel, memcpy, etc.)
         // 3. Allocate activity buffers
@@ -22,17 +22,17 @@ impl CuptiProfiler {
 
 impl GpuProfiler for CuptiProfiler {
     fn start(&mut self) -> Result<()> {
-        // TODO Phase 4: Start CUPTI profiling
+        // TODO: Start CUPTI profiling
         Ok(())
     }
 
     fn stop(&mut self) -> Result<()> {
-        // TODO Phase 4: Stop CUPTI profiling and flush buffers
+        // TODO: Stop CUPTI profiling and flush buffers
         Ok(())
     }
 
     fn collect_metrics(&self) -> Result<Vec<GpuMetric>> {
-        // TODO Phase 4: Parse CUPTI activity records into GpuMetric
+        // TODO: Parse CUPTI activity records into GpuMetric
         Ok(Vec::new())
     }
 }

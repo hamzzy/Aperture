@@ -1,5 +1,5 @@
 import { Clock, Filter, Code2, RefreshCw } from "lucide-react";
-import { usePhase8 } from "@/contexts/Phase8Context";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -42,11 +42,11 @@ interface TopBarProps {
 }
 
 export function TopBar(props: TopBarProps) {
-  const phase8 = usePhase8();
-  const timePreset = props.timePreset ?? phase8?.timePreset ?? "1h";
-  const onTimePresetChange = props.onTimePresetChange ?? phase8?.setTimePreset;
-  const onRefresh = props.onRefresh ?? phase8?.triggerRefresh;
-  const refreshing = props.refreshing ?? phase8?.refreshing ?? false;
+  const dashboard = useDashboard();
+  const timePreset = props.timePreset ?? dashboard?.timePreset ?? "1h";
+  const onTimePresetChange = props.onTimePresetChange ?? dashboard?.setTimePreset;
+  const onRefresh = props.onRefresh ?? dashboard?.triggerRefresh;
+  const refreshing = props.refreshing ?? dashboard?.refreshing ?? false;
   return (
     <header className="flex h-12 items-center justify-between border-b border-border bg-card px-4 gap-3">
       <div className="flex items-center gap-2 flex-1">

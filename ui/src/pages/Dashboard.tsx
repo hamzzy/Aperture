@@ -4,7 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
 import { ProfileInsights } from "@/components/profiler/ProfileInsights";
 import { Flame, BarChart3, GitCompare, Shield, Database, Activity, Terminal, Download } from "lucide-react";
-import { usePhase8 } from "@/contexts/Phase8Context";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { useHealthQuery, useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import { formatNs } from "@/lib/format";
 import type { HealthInfo } from "@/api/types";
@@ -56,9 +56,9 @@ function HealthBadge({ health }: { health: HealthInfo | null }) {
 }
 
 export default function Dashboard() {
-  const phase8 = usePhase8();
+  const dashboard = useDashboard();
   const [eventType, setEventType] = useState<"cpu" | "lock" | "syscall" | "">("");
-  const { start, end } = phase8?.timeRange ?? { start: 0, end: 0 };
+  const { start, end } = dashboard?.timeRange ?? { start: 0, end: 0 };
 
   const healthQuery = useHealthQuery();
   const aggregateQuery = useAggregateQuery({
@@ -66,7 +66,7 @@ export default function Dashboard() {
     time_end_ns: end,
     limit: 20,
     event_type: eventType || undefined,
-    enabled: !!phase8,
+    enabled: !!dashboard,
   });
   const batchesQuery = useBatchesQuery({ limit: 50 });
 
@@ -79,20 +79,20 @@ export default function Dashboard() {
     (healthQuery.isError ? healthQuery.error?.message : null);
 
   useEffect(() => {
-    if (phase8) {
-      phase8.registerRefresh(() => {
+    if (dashboard) {
+      dashboard.registerRefresh(() => {
         healthQuery.refetch();
         aggregateQuery.refetch();
         batchesQuery.refetch();
       });
     }
-  }, [phase8?.registerRefresh]);
+  }, [dashboard?.registerRefresh]);
 
   useEffect(() => {
-    phase8?.setRefreshing(
+    dashboard?.setRefreshing(
       aggregateQuery.isFetching || batchesQuery.isFetching || healthQuery.isFetching
     );
-  }, [aggregateQuery.isFetching, batchesQuery.isFetching, healthQuery.isFetching, phase8?.setRefreshing]);
+  }, [aggregateQuery.isFetching, batchesQuery.isFetching, healthQuery.isFetching, dashboard?.setRefreshing]);
 
   const cpu = aggregate?.cpu;
   const lock = aggregate?.lock;
@@ -183,7 +183,7 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Health panel (Phase 7 metrics) */}
+        {/* Health panel (aggregator metrics) */}
         {health && (
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-md border border-border bg-card p-3 flex items-center gap-3">

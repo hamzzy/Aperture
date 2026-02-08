@@ -2,7 +2,7 @@
 //!
 //! This is a higher-level CLI that supports multiple commands:
 //! - profile: Run profiling (wraps agent)
-//! - query: Query aggregated data (Phase 5+)
+//! - query: Query aggregated data
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

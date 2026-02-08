@@ -5,20 +5,20 @@ import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Maximize2, AlertTriangle } from "lucide-react";
-import { usePhase8 } from "@/contexts/Phase8Context";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import type { StackCount } from "@/api/types";
 
 export default function FlamegraphPage() {
-  const phase8 = usePhase8();
-  const { start, end } = phase8?.timeRange ?? { start: 0, end: 0 };
+  const dashboard = useDashboard();
+  const { start, end } = dashboard?.timeRange ?? { start: 0, end: 0 };
   const [eventType, setEventType] = useState<"cpu" | "lock" | "">("");
   const aggregateQuery = useAggregateQuery({
     time_start_ns: start,
     time_end_ns: end,
     limit: 500,
     event_type: eventType || undefined,
-    enabled: !!phase8,
+    enabled: !!dashboard,
   });
   const batchesQuery = useBatchesQuery({ limit: 50 });
   const data = aggregateQuery.data;

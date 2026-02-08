@@ -1,12 +1,12 @@
-//! Example WASM filter (Phase 3+)
+//! Example WASM filter
 //!
 //! This example shows how to write a filter in Rust that compiles to WASM
 
-// TODO Phase 3: Create example filter
+// TODO: Create example filter
 // Example: Filter events from specific PIDs or with specific stack patterns
 
 fn main() {
-    println!("TODO Phase 3: Implement example WASM filter");
+    println!("TODO: Implement example WASM filter");
     println!("Compile with: cargo build --target wasm32-wasi");
 }
 

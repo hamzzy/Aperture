@@ -632,8 +632,7 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
             while let Ok(events) = buf.read_events(&mut buffers).await {
                 for buf_ref in buffers.iter().take(events.read) {
                     if buf_ref.len() >= core::mem::size_of::<SyscallEventBpf>() {
-                        let event =
-                            unsafe { &*(buf_ref.as_ptr() as *const SyscallEventBpf) };
+                        let event = unsafe { &*(buf_ref.as_ptr() as *const SyscallEventBpf) };
                         let mut coll = collector.lock().await;
                         if let Err(e) = coll.process_event(event) {
                             debug!("Error processing syscall event: {}", e);

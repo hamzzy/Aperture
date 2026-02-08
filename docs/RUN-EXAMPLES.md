@@ -1,6 +1,6 @@
 # Run examples
 
-How to run the agent, aggregator, and Phase 8 UI in different setups.
+How to run the agent, aggregator, and Web UI in different setups.
 
 ---
 
@@ -69,8 +69,8 @@ docker compose up -d
 # Only backend (no agent): ClickHouse + aggregator
 docker compose up -d clickhouse aggregator
 
-# Run Phase 8 UI after backend is up
-cd gpu-whisperer-ui && npm install && npm run dev
+# Run Web UI after backend is up
+cd ui && npm install && npm run dev
 # Open http://localhost:8080
 ```
 
@@ -111,7 +111,7 @@ cargo run -p aperture-cli -- diff --endpoint http://127.0.0.1:50051 --event_type
 
 ## One-shot demo scripts
 
-- **`./scripts/run-phase8.sh`** – Start ClickHouse + aggregator + agent (Docker), then run Phase 8 UI in `gpu-whisperer-ui`.
+- **`docker compose up -d`** – Start ClickHouse + aggregator + agent (Docker). Then run the Web UI from the `ui` directory.
 - **`./scripts/demo-live-orb.sh`** – Full demo via OrbStack: ClickHouse on Mac, sync to VM, build, run aggregator + agent + CLI in VM (requires `ssh ubuntu@orb`).
 - **`./scripts/demo-live.sh`** – Same idea on native Linux (Docker for ClickHouse, local aggregator + agent + CLI).
 
@@ -124,4 +124,4 @@ cargo run -p aperture-cli -- diff --endpoint http://127.0.0.1:50051 --event_type
 | Aggregator admin/API | http://127.0.0.1:9090 | Health, metrics, `/api/*`  |
 | Aggregator gRPC      | 127.0.0.1:50051      | Agent push, CLI query      |
 | ClickHouse HTTP      | 127.0.0.1:8123       | When using Docker clickhouse |
-| Phase 8 UI           | http://localhost:8080 | After `npm run dev` in gpu-whisperer-ui |
+| Web UI               | http://localhost:8080 | After `npm run dev` in `ui`            |

@@ -1,5 +1,5 @@
 /**
- * Aperture Phase 8 – REST API types (aggregator /api/aggregate, /api/diff, /api/batches, /api/health)
+ * Aperture REST API types (aggregator /api/aggregate, /api/diff, /api/batches, /api/health)
  */
 
 export interface Frame {

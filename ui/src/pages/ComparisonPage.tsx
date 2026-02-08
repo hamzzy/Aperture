@@ -4,12 +4,12 @@ import { ComparisonView } from "@/components/profiler/ComparisonView";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { usePhase8 } from "@/contexts/Phase8Context";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { nsFromPreset } from "@/components/layout/TopBar";
 import { useDiffMutation } from "@/api/queries";
 
 export default function ComparisonPage() {
-  const phase8 = usePhase8();
+  const dashboard = useDashboard();
   const [baselineStart, setBaselineStart] = useState("");
   const [baselineEnd, setBaselineEnd] = useState("");
   const [comparisonStart, setComparisonStart] = useState("");
@@ -21,7 +21,7 @@ export default function ComparisonPage() {
   const error = diffMutation.error?.message ?? null;
 
   const runDiff = useCallback(() => {
-    const { start: defStart, end: defEnd } = nsFromPreset(phase8?.timePreset ?? "1h");
+    const { start: defStart, end: defEnd } = nsFromPreset(dashboard?.timePreset ?? "1h");
     diffMutation.mutate({
       baseline_start_ns: baselineStart ? Number(baselineStart) : defStart,
       baseline_end_ns: baselineEnd ? Number(baselineEnd) : defEnd,
@@ -30,7 +30,7 @@ export default function ComparisonPage() {
       event_type: "cpu",
       limit: 500,
     });
-  }, [baselineStart, baselineEnd, comparisonStart, comparisonEnd, phase8?.timePreset, diffMutation]);
+  }, [baselineStart, baselineEnd, comparisonStart, comparisonEnd, dashboard?.timePreset, diffMutation]);
 
   const swap = useCallback(() => {
     setBaselineStart((p) => comparisonStart);

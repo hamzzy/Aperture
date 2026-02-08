@@ -1,4 +1,4 @@
-# GPU Profiler (Phase 4+)
+# GPU Profiler
 
 GPU profiling support for CUDA and ROCm workloads.
 
@@ -36,4 +36,4 @@ let metrics = profiler.collect_metrics()?;
 
 ## Status
 
-🚧 Not yet implemented - Phase 4+
+🚧 Not yet implemented

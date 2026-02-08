@@ -1,4 +1,4 @@
-//! GPU metrics definitions and utilities (Phase 4+)
+//! GPU metrics definitions and utilities
 
 use crate::GpuMetric;
 
@@ -22,13 +22,13 @@ impl GpuMetricAggregator {
 
     /// Get total GPU time
     pub fn total_gpu_time_ns(&self) -> u64 {
-        // TODO Phase 4: Calculate total GPU time
+        // TODO: Calculate total GPU time
         0
     }
 
     /// Get kernel execution count
     pub fn kernel_count(&self) -> usize {
-        // TODO Phase 4: Count kernel executions
+        // TODO: Count kernel executions
         0
     }
 }

@@ -1,4 +1,4 @@
-//! Audit logging for security and operational events (Phase 7).
+//! Audit logging for security and operational events.
 //!
 //! All events are emitted via `tracing` with a dedicated target so they can be
 //! filtered and formatted (e.g. JSON) for audit pipelines.

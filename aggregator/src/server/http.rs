@@ -1,4 +1,4 @@
-//! Admin HTTP server for health checks, metrics, and REST API (Phase 7–8)
+//! Admin HTTP server for health checks, metrics, and REST API
 
 use crate::alerts::AlertStore;
 use crate::audit;

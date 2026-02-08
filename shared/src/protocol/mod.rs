@@ -1,4 +1,4 @@
-//! Wire protocol definitions (Phase 5+)
+//! Wire protocol definitions
 //!
 //! This module defines the wire protocol used for communication between
 //! profiling agents and the aggregator service.

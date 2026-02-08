@@ -1,4 +1,4 @@
-//! Retry utility with exponential backoff (Phase 7)
+//! Retry utility with exponential backoff
 
 use std::time::Duration;
 use tracing::warn;

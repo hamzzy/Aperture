@@ -1,5 +1,5 @@
 /**
- * Aperture Phase 8 – REST API client (aggregator admin port, e.g. 9090)
+ * Aperture REST API client (aggregator admin port, e.g. 9090)
  */
 
 import type {
@@ -16,7 +16,7 @@ import type {
 
 const API = "/api";
 
-/** Optional bearer token for authenticated aggregators (Phase 7) */
+/** Optional bearer token for authenticated aggregators */
 let authToken: string | null = null;
 
 export function setAuthToken(token: string | null) {

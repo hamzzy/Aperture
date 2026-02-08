@@ -1,6 +1,6 @@
-# Aggregator Service (Phase 5)
+# Aggregator Service
 
-The aggregator service is the central coordinator for distributed profiling deployments. It receives profile data from agents via gRPC and buffers it in memory (with optional persistent backends in Phase 6).
+The aggregator service is the central coordinator for distributed profiling deployments. It receives profile data from agents via gRPC and buffers it in memory (with optional persistent backends).
 
 ## Features (Planned)
 
@@ -30,7 +30,7 @@ From macOS, run the full pipeline (agent → aggregator → ClickHouse) inside O
 
 Syncs to `ubuntu@orb`, builds eBPF + aggregator (with ClickHouse) + agent + CLI, then runs: ClickHouse → aggregator → agent (CPU 5s, `--aggregator`) → `aperture query`. Requires OrbStack and `ssh ubuntu@orb`; the agent step uses sudo (eBPF). On Linux natively, use `./scripts/demo-live.sh` instead.
 
-## Phase 6: ClickHouse storage (optional)
+## ClickHouse storage (optional)
 
 Build with the feature and set env to persist batches:
 

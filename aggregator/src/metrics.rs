@@ -1,4 +1,4 @@
-//! Prometheus metrics for the aggregator service (Phase 7)
+//! Prometheus metrics for the aggregator service
 
 use once_cell::sync::Lazy;
 use prometheus::{

@@ -36,7 +36,7 @@ function DiffValue({ delta, deltaPct }: { delta: number; deltaPct: number }) {
 }
 
 interface ComparisonViewProps {
-  /** Phase 8 API: diff result from /api/diff */
+  /** Diff result from /api/diff */
   diff: CpuDiffJson | null;
   /** Time ranges for display */
   baselineStartNs?: number;

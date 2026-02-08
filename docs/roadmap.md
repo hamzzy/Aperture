@@ -1,8 +1,8 @@
 # Aperture Roadmap
 
-This document outlines the development phases and milestones for the Aperture project.
+This document outlines the milestones and future plans for the Aperture project.
 
-## Development Phases
+## Milestones
 
 
   - [ ] Benchmarking overhead (<1% target)

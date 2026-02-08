@@ -1,4 +1,4 @@
-//! Aggregate command implementation (Phase 6)
+//! Aggregate command implementation
 
 use anyhow::{Context, Result};
 use aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient;

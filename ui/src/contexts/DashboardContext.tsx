@@ -5,7 +5,7 @@ import { nsFromPreset } from "@/components/layout/TopBar";
 
 type TimeRange = { start: number; end: number };
 
-type Phase8ContextValue = {
+type DashboardContextValue = {
   timePreset: TimePreset;
   setTimePreset: (p: TimePreset) => void;
   /** Stable time range (ms) — only changes on preset change or refresh. */
@@ -16,9 +16,9 @@ type Phase8ContextValue = {
   setRefreshing: (v: boolean) => void;
 };
 
-const Phase8Context = createContext<Phase8ContextValue | null>(null);
+const DashboardContext = createContext<DashboardContextValue | null>(null);
 
-export function Phase8Provider({ children }: { children: ReactNode }) {
+export function DashboardProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [timePreset, setTimePresetRaw] = useState<TimePreset>("1h");
   const [onRefresh, setOnRefresh] = useState<(() => void) | null>(null);
@@ -46,7 +46,7 @@ export function Phase8Provider({ children }: { children: ReactNode }) {
     onRefresh?.();
   }, [onRefresh, queryClient]);
   return (
-    <Phase8Context.Provider
+    <DashboardContext.Provider
       value={{
         timePreset,
         setTimePreset,
@@ -58,11 +58,11 @@ export function Phase8Provider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </Phase8Context.Provider>
+    </DashboardContext.Provider>
   );
 }
 
-export function usePhase8() {
-  const ctx = useContext(Phase8Context);
+export function useDashboard() {
+  const ctx = useContext(DashboardContext);
   return ctx;
 }

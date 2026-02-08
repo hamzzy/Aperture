@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "WASM filter runtime for Aperture (Phase 3+)"
+description = "WASM filter runtime for Aperture"
 
 [dependencies]
 # Workspace dependencies

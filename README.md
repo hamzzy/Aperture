@@ -208,7 +208,7 @@ Full documentation is available at the [Docusaurus site](docs-site/) (`cd docs-s
 - **[WASM Filters](docs-site/docs/guides/wasm-filters.md)** — Writing custom event filters
 - **[Kubernetes](docs-site/docs/guides/kubernetes.md)** — DaemonSet + Deployment manifests
 - **[Alerting](docs-site/docs/guides/alerting.md)** — Threshold rules, evaluation, REST API
-- **[Roadmap](docs-site/docs/roadmap.md)** — Development phases and future plans
+- **[Roadmap](docs-site/docs/roadmap.md)** — Roadmap and future plans
 
 ## Contributing
 

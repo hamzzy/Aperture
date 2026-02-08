@@ -9,7 +9,7 @@ Development status and future plans for Aperture.
 
 ## Completed
 
-### Phase 1: CPU Profiling
+### CPU Profiling
 - [x] eBPF perf_event software CPU clock sampling
 - [x] Configurable sampling frequency (default 99 Hz)
 - [x] PID filtering via `perf_event_open` scope
@@ -18,7 +18,7 @@ Development status and future plans for Aperture.
 - [x] Flamegraph SVG output
 - [x] JSON output
 
-### Phase 2: Lock & Syscall Profiling
+### Lock & Syscall Profiling
 - [x] Lock contention: futex tracing via `sys_enter_futex` / `sys_exit_futex`
 - [x] Syscall tracing: all syscalls via `sys_enter` / `sys_exit` raw tracepoints
 - [x] Namespace-aware PID filtering (`bpf_get_ns_current_pid_tgid`)
@@ -26,7 +26,7 @@ Development status and future plans for Aperture.
 - [x] Syscall latency histograms
 - [x] `--mode cpu|lock|syscall|all` with concurrent execution
 
-### Phase 3: Distributed Aggregator
+### Distributed Aggregator
 - [x] gRPC service (Push, Query, Aggregate, Diff RPCs)
 - [x] In-memory ring buffer
 - [x] ClickHouse persistent storage
@@ -34,14 +34,14 @@ Development status and future plans for Aperture.
 - [x] CLI client (query, aggregate, diff commands)
 - [x] Authentication (Bearer token)
 
-### Phase 4: WASM Filters
+### WASM Filters
 - [x] wasmtime-based filter runtime
 - [x] EventContext ABI (flat C struct)
 - [x] Fuel-limited execution (~1M instructions per call)
 - [x] Host function: `env.log`
 - [x] `filter_event()` and `filter_batch()` APIs
 
-### Phase 5: Web Dashboard
+### Web Dashboard
 - [x] React + Vite + Tailwind + shadcn/ui
 - [x] Interactive flamegraph viewer
 - [x] Top functions table
@@ -50,14 +50,14 @@ Development status and future plans for Aperture.
 - [x] Timeline view
 - [x] Settings page
 
-### Phase 6: Alerts & Monitoring
+### Alerts & Monitoring
 - [x] In-memory alert engine (rules, evaluation, history)
 - [x] 6 alert metrics (buffer, errors, throughput)
 - [x] REST API for rule CRUD + evaluation
 - [x] Alert management UI page
 - [x] Prometheus metrics endpoint
 
-### Phase 7: Export & Deployment
+### Export & Deployment
 - [x] JSON export endpoint
 - [x] Collapsed-stack format export
 - [x] Dockerfiles (agent + aggregator)
@@ -65,7 +65,7 @@ Development status and future plans for Aperture.
 - [x] Install script (`curl | sh`)
 - [x] Kubernetes manifests (DaemonSet + Deployment)
 
-### Phase 8: UI Polish
+### UI Polish
 - [x] Unresolved frame detection and grey styling
 - [x] Enhanced tooltips (module, depth, percentages)
 - [x] Symbol resolution diagnostics in agent

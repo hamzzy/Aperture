@@ -1,4 +1,4 @@
-//! Server implementations (Phase 5+)
+//! Server implementations
 
 pub mod api;
 pub mod auth;

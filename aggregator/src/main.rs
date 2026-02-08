@@ -1,7 +1,7 @@
-//! Aggregator Service (Phase 5+)
+//! Aggregator Service
 //!
 //! Receives profiling data from multiple agents via gRPC and buffers it in memory.
-//! Optional Phase 6: persist to ClickHouse when APERTURE_CLICKHOUSE_ENDPOINT is set.
+//! Optional: persist to ClickHouse when APERTURE_CLICKHOUSE_ENDPOINT is set.
 
 use anyhow::{Context, Result};
 use aperture_aggregator::{

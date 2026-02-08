@@ -7,7 +7,7 @@ use std::path::PathBuf;
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
-    // TODO Phase 1: Generate vmlinux.rs from BTF
+    // TODO: Generate vmlinux.rs from BTF
     // This requires reading /sys/kernel/btf/vmlinux and generating Rust bindings
     // For now, we'll use a minimal set of manually defined types
 

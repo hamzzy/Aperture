@@ -1,4 +1,4 @@
-# Aperture Phase 8 – Web UI
+# Aperture Web UI
 
 Web UI for Aperture profiling (flamegraph, top functions, comparison). Connects to the aggregator REST API; storage uses ClickHouse.
 
@@ -7,13 +7,13 @@ Web UI for Aperture profiling (flamegraph, top functions, comparison). Connects 
 From repo root:
 
 ```bash
-./scripts/run-phase8.sh
+docker compose up -d
 ```
 
 This starts **ClickHouse**, **aggregator** (with storage), and **agent** (Linux eBPF in Docker, pushes to aggregator → ClickHouse). Then:
 
 ```bash
-cd gpu-whisperer-ui
+cd ui
 npm install
 npm run dev
 ```
@@ -26,7 +26,7 @@ To run only ClickHouse + aggregator (no agent):
 
 ```bash
 docker compose up -d clickhouse aggregator
-cd gpu-whisperer-ui && npm run dev
+cd ui && npm run dev
 ```
 
 Then `/api/aggregate` and flamegraph will work only if data was previously pushed (e.g. from another run with the agent).
@@ -48,4 +48,4 @@ export APERTURE_CLICKHOUSE_PASSWORD="e2etest"
 cargo run -p aperture-aggregator --features clickhouse-storage
 ```
 
-Then run the UI as above; agent must run on Linux (e.g. in Docker or a VM).
+Then run the UI from the `ui` directory as above; agent must run on Linux (e.g. in Docker or a VM).

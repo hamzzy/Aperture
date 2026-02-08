@@ -2,13 +2,13 @@ import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { TopFunctionsTable } from "@/components/profiler/TopFunctionsTable";
 import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
-import { usePhase8 } from "@/contexts/Phase8Context";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import type { StackCount } from "@/api/types";
 
 export default function TopFunctionsPage() {
-  const phase8 = usePhase8();
-  const { start, end } = phase8?.timeRange ?? { start: 0, end: 0 };
+  const dashboard = useDashboard();
+  const { start, end } = dashboard?.timeRange ?? { start: 0, end: 0 };
   const [eventType, setEventType] = useState<"cpu" | "lock" | "">("");
   const batchesQuery = useBatchesQuery({ limit: 50 });
   const aggregateQuery = useAggregateQuery({
@@ -16,7 +16,7 @@ export default function TopFunctionsPage() {
     time_end_ns: end,
     limit: 500,
     event_type: eventType || undefined,
-    enabled: !!phase8,
+    enabled: !!dashboard,
   });
   const data = aggregateQuery.data;
 
