@@ -16,6 +16,17 @@ use tokio_util::sync::CancellationToken;
 
 const TABLE_NAME: &str = "aperture_batches";
 
+/// Convert a timestamp that may be in nanoseconds or milliseconds to milliseconds.
+/// Values >= 1e15 are assumed to be nanoseconds and are divided by 1_000_000.
+/// Values < 1e15 are assumed to already be milliseconds.
+fn to_millis(ts: i64) -> i64 {
+    if ts >= 1_000_000_000_000_000 {
+        ts / 1_000_000
+    } else {
+        ts
+    }
+}
+
 const DEFAULT_TABLE_ENGINE: &str = "\
 MergeTree() \
 PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(received_at_ms)) \
@@ -47,6 +58,8 @@ pub struct ClickHouseStore {
     pending: Arc<AsyncMutex<Vec<BatchRow>>>,
     cancel: CancellationToken,
     flush_handle: Mutex<Option<JoinHandle<()>>>,
+    /// Notifies the background flush task to wake early when threshold is reached.
+    flush_notify: Arc<tokio::sync::Notify>,
 }
 
 impl ClickHouseStore {
@@ -67,6 +80,7 @@ impl ClickHouseStore {
             pending: Arc::new(AsyncMutex::new(Vec::new())),
             cancel: CancellationToken::new(),
             flush_handle: Mutex::new(None),
+            flush_notify: Arc::new(tokio::sync::Notify::new()),
         };
 
         store.ensure_table().await?;
@@ -118,8 +132,10 @@ impl ClickHouseStore {
         crate::metrics::CH_PENDING_ROWS.set(len as f64);
         drop(pending);
 
+        // Wake the background flush task early when threshold is reached.
+        // This avoids blocking the push RPC on a synchronous ClickHouse insert.
         if len >= FLUSH_THRESHOLD {
-            self.flush().await?;
+            self.flush_notify.notify_one();
         }
         Ok(())
     }
@@ -152,63 +168,61 @@ impl ClickHouseStore {
         }
     }
 
-    /// Spawn a background task that flushes pending rows on a timer.
-    /// On cancel (shutdown), performs one final flush before exiting.
+    /// Spawn a background task that flushes pending rows on a timer or when
+    /// notified (threshold reached). On cancel (shutdown), performs one final flush.
     fn spawn_flush_task(&self) {
         let pending = self.pending.clone();
         let client = self.client.clone();
         let table = self.table.clone();
         let cancel = self.cancel.clone();
+        let notify = self.flush_notify.clone();
+
+        /// Drain pending rows and flush to ClickHouse. Re-queues on error.
+        async fn do_flush(
+            pending: &AsyncMutex<Vec<BatchRow>>,
+            client: &Client,
+            table: &str,
+            label: &str,
+        ) {
+            let rows = {
+                let mut p = pending.lock().await;
+                if p.is_empty() {
+                    return;
+                }
+                std::mem::take(&mut *p)
+            };
+            crate::metrics::CH_PENDING_ROWS.set(0.0);
+            let count = rows.len();
+            let start = Instant::now();
+            match ClickHouseStore::flush_rows(client, table, &rows).await {
+                Ok(()) => {
+                    crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["ok"]).inc();
+                    crate::metrics::CH_FLUSH_ROWS.inc_by(count as f64);
+                    crate::metrics::CH_FLUSH_DURATION.observe(start.elapsed().as_secs_f64());
+                    tracing::debug!("{}: {} rows to ClickHouse", label, count);
+                }
+                Err(e) => {
+                    crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["error"]).inc();
+                    tracing::warn!("{} failed ({} rows), re-queuing: {:#}", label, count, e);
+                    let mut p = pending.lock().await;
+                    p.extend(rows);
+                    crate::metrics::CH_PENDING_ROWS.set(p.len() as f64);
+                }
+            }
+        }
+
         let handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(FLUSH_INTERVAL);
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let rows = {
-                            let mut pending = pending.lock().await;
-                            if pending.is_empty() {
-                                continue;
-                            }
-                            std::mem::take(&mut *pending)
-                        };
-                        crate::metrics::CH_PENDING_ROWS.set(0.0);
-                        let count = rows.len();
-                        let start = Instant::now();
-                        match Self::flush_rows(&client, &table, &rows).await {
-                            Ok(()) => {
-                                crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["ok"]).inc();
-                                crate::metrics::CH_FLUSH_ROWS.inc_by(count as f64);
-                                crate::metrics::CH_FLUSH_DURATION.observe(start.elapsed().as_secs_f64());
-                                tracing::debug!("Timer flush: {} rows to ClickHouse", count);
-                            }
-                            Err(e) => {
-                                crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["error"]).inc();
-                                tracing::warn!("Timer flush failed ({} rows), re-queuing: {:#}", count, e);
-                                let mut p = pending.lock().await;
-                                p.extend(rows);
-                                crate::metrics::CH_PENDING_ROWS.set(p.len() as f64);
-                            }
-                        }
+                        do_flush(&pending, &client, &table, "Timer flush").await;
+                    }
+                    _ = notify.notified() => {
+                        do_flush(&pending, &client, &table, "Threshold flush").await;
                     }
                     _ = cancel.cancelled() => {
-                        let rows = {
-                            let mut pending = pending.lock().await;
-                            std::mem::take(&mut *pending)
-                        };
-                        if !rows.is_empty() {
-                            crate::metrics::CH_PENDING_ROWS.set(0.0);
-                            let count = rows.len();
-                            let start = Instant::now();
-                            if let Err(e) = Self::flush_rows(&client, &table, &rows).await {
-                                crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["error"]).inc();
-                                tracing::warn!("Shutdown flush failed ({} rows lost): {:#}", count, e);
-                            } else {
-                                crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["ok"]).inc();
-                                crate::metrics::CH_FLUSH_ROWS.inc_by(count as f64);
-                                crate::metrics::CH_FLUSH_DURATION.observe(start.elapsed().as_secs_f64());
-                                tracing::info!("Shutdown flush: {} rows to ClickHouse", count);
-                            }
-                        }
+                        do_flush(&pending, &client, &table, "Shutdown flush").await;
                         break;
                     }
                 }
@@ -274,10 +288,10 @@ impl ClickHouseStore {
             q = q.bind(id);
         }
         if let Some(ts) = time_start_ns {
-            q = q.bind(ts / 1_000_000);
+            q = q.bind(to_millis(ts));
         }
         if let Some(te) = time_end_ns {
-            q = q.bind(te / 1_000_000);
+            q = q.bind(to_millis(te));
         }
         q = q.bind(limit);
 
@@ -333,10 +347,10 @@ impl ClickHouseStore {
             q = q.bind(id);
         }
         if let Some(ts) = time_start_ns {
-            q = q.bind(ts / 1_000_000);
+            q = q.bind(to_millis(ts));
         }
         if let Some(te) = time_end_ns {
-            q = q.bind(te / 1_000_000);
+            q = q.bind(to_millis(te));
         }
         q = q.bind(limit);
 

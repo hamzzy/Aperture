@@ -19,8 +19,9 @@ const PRESETS: { value: TimePreset; label: string }[] = [
   { value: "24h", label: "Last 24 hours" },
 ];
 
+/** Return a time range in milliseconds since epoch for the given preset. */
 export function nsFromPreset(preset: TimePreset): { start: number; end: number } {
-  const end = Math.floor(Date.now() * 1e6);
+  const endMs = Date.now();
   const mul: Record<TimePreset, number> = {
     "5m": 5 * 60,
     "15m": 15 * 60,
@@ -29,8 +30,8 @@ export function nsFromPreset(preset: TimePreset): { start: number; end: number }
     "24h": 24 * 3600,
   };
   const sec = mul[preset];
-  const start = end - sec * 1e9;
-  return { start, end };
+  const startMs = endMs - sec * 1_000;
+  return { start: startMs, end: endMs };
 }
 
 interface TopBarProps {

@@ -65,9 +65,14 @@ pub struct AggregateResultJson {
     pub total_events: u64,
 }
 
+/// Maximum number of unique stacks / contentions to include in JSON output.
+/// Keeps response size bounded so the browser can parse it without hitting V8 limits.
+pub const MAX_JSON_STACKS: usize = 2000;
+
 impl AggregateResult {
     /// Convert to a JSON-serializable representation.
     /// Profile types with non-string HashMap keys are flattened to arrays.
+    /// Stacks are sorted by count (descending) and truncated to `MAX_JSON_STACKS`.
     pub fn to_json(&self) -> AggregateResultJson {
         let cpu = self.cpu.as_ref().map(|p| {
             let mut stacks: Vec<StackCountJson> = p
@@ -79,6 +84,7 @@ impl AggregateResult {
                 })
                 .collect();
             stacks.sort_by(|a, b| b.count.cmp(&a.count));
+            stacks.truncate(MAX_JSON_STACKS);
             CpuProfileJson {
                 start_time: p.start_time,
                 end_time: p.end_time,
@@ -102,6 +108,7 @@ impl AggregateResult {
                 })
                 .collect();
             contentions.sort_by(|a, b| b.total_wait_ns.cmp(&a.total_wait_ns));
+            contentions.truncate(MAX_JSON_STACKS);
             LockProfileJson {
                 start_time: p.start_time,
                 end_time: p.end_time,
@@ -149,7 +156,10 @@ pub fn aggregate_batches(payloads: &[String]) -> Result<AggregateBatchesResult> 
         let msg = match Message::from_bytes(&bytes) {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("bincode decode message (schema/version mismatch or corrupt): {}", e);
+                tracing::warn!(
+                    error = %e,
+                    "bincode decode message (schema/version mismatch or corrupt)"
+                );
                 skipped_batches += 1;
                 continue;
             }

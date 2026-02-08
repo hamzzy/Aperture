@@ -4,7 +4,6 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
 import { Flame, BarChart3, GitCompare, Shield, Database, Activity } from "lucide-react";
 import { usePhase8 } from "@/contexts/Phase8Context";
-import { nsFromPreset } from "@/components/layout/TopBar";
 import { useHealthQuery, useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import { formatNs } from "@/lib/format";
 import type { HealthInfo } from "@/api/types";
@@ -57,14 +56,14 @@ function HealthBadge({ health }: { health: HealthInfo | null }) {
 
 export default function Dashboard() {
   const phase8 = usePhase8();
-  const [eventType, setEventType] = useState<"cpu" | "lock" | "syscall" | "">("cpu");
-  const { start, end } = phase8 ? nsFromPreset(phase8.timePreset) : { start: 0, end: 0 };
+  const [eventType, setEventType] = useState<"cpu" | "lock" | "syscall" | "">("");
+  const { start, end } = phase8?.timeRange ?? { start: 0, end: 0 };
 
   const healthQuery = useHealthQuery();
   const aggregateQuery = useAggregateQuery({
     time_start_ns: start,
     time_end_ns: end,
-    limit: 500,
+    limit: 20,
     event_type: eventType || undefined,
     enabled: !!phase8,
   });

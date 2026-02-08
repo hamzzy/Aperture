@@ -1,8 +1,9 @@
 //! Aggregator service library
 
-/// Maximum number of batches to fetch for aggregate/diff. Keeps JSON response size
-/// under V8/browser string limit (~0x1fffffe8 chars). Increase only with pagination/streaming.
-pub const MAX_AGGREGATE_BATCH_LIMIT: u32 = 500;
+/// Maximum number of batches to fetch for aggregate/diff. Combined with
+/// `MAX_JSON_STACKS` in aggregate.rs, this keeps JSON response size under
+/// the V8/browser string limit (~512 MB).
+pub const MAX_AGGREGATE_BATCH_LIMIT: u32 = 100;
 
 pub mod aggregate;
 pub mod audit;

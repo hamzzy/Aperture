@@ -9,6 +9,7 @@ use aperture_shared::types::diff;
 use aperture_shared::types::profile::{LockProfile, Profile, SyscallProfile};
 use hyper::{body::to_bytes, Body, Request, Response, StatusCode};
 use std::sync::Arc;
+use std::time::Duration;
 
 fn json_response(body: &str, status: StatusCode) -> Response<Body> {
     Response::builder()
@@ -142,23 +143,7 @@ pub async fn handle_api(
     }
 
     if path == "/api/aggregate" && method == hyper::Method::POST {
-        let store = match &store {
-            Some(s) => s,
-            None => {
-                let body = serde_json::json!({
-                    "error": "storage not configured (enable ClickHouse)",
-                    "cpu": null,
-                    "lock": null,
-                    "syscall": null,
-                    "total_events": 0u64
-                }).to_string();
-                let res = add_cors_headers(json_response(&body, StatusCode::SERVICE_UNAVAILABLE));
-                return Ok(res);
-            }
-        };
-        let body_bytes = to_bytes(req.into_body()).await.map_err(|e| {
-            hyper::Error::from(e)
-        })?;
+        let body_bytes = to_bytes(req.into_body()).await.map_err(hyper::Error::from)?;
         let api_req: AggregateRequest = match serde_json::from_slice(&body_bytes) {
             Ok(r) => r,
             Err(e) => {
@@ -170,22 +155,29 @@ pub async fn handle_api(
         };
         let agent_filter = api_req.agent_id.as_deref().and_then(|s| if s.is_empty() { None } else { Some(s) });
         let limit = api_req.limit.unwrap_or(500).min(MAX_AGGREGATE_BATCH_LIMIT);
-        let payloads = match store
-            .fetch_payload_strings(
-                agent_filter,
-                api_req.time_start_ns,
-                api_req.time_end_ns,
-                limit,
-            )
-            .await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                let body = serde_json::json!({ "error": e }).to_string();
-                let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
-                return Ok(res);
+
+        // Try ClickHouse first (with timeout), fall back to in-memory buffer
+        let payloads = if let Some(ref s) = store {
+            let ch_future = s.fetch_payload_strings(agent_filter, api_req.time_start_ns, api_req.time_end_ns, limit);
+            match tokio::time::timeout(Duration::from_secs(5), ch_future).await {
+                Ok(Ok(p)) if !p.is_empty() => p,
+                Ok(Ok(_)) => {
+                    // ClickHouse returned empty — fall back to buffer
+                    buffer.payload_strings(agent_filter, limit).unwrap_or_default()
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("ClickHouse query failed, using buffer: {}", e);
+                    buffer.payload_strings(agent_filter, limit).unwrap_or_default()
+                }
+                Err(_) => {
+                    tracing::warn!("ClickHouse query timed out (5s), using buffer");
+                    buffer.payload_strings(agent_filter, limit).unwrap_or_default()
+                }
             }
+        } else {
+            buffer.payload_strings(agent_filter, limit).unwrap_or_default()
         };
+
         let out = match aggregate::aggregate_batches(&payloads) {
             Ok(o) => o,
             Err(e) => {

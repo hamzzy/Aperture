@@ -260,7 +260,7 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
     use tokio::sync::Mutex;
 
     use collector::cpu::{CpuCollector, SampleEvent};
-    use collector::symbols::SymbolResolver;
+    use collector::symbols::{SymbolCache, SymbolResolver};
     use ebpf::cpu_profiler::CpuProfiler;
 
     info!(
@@ -322,6 +322,7 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
     }
 
     // 5. Spawn streaming push task if aggregator is configured
+    let target_pid = config.target_pid;
     let push_handle = if let Some(ref url) = config.aggregator_url {
         let url = url.clone();
         let agent = agent_id();
@@ -330,9 +331,11 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
         Some(tokio::spawn(async move {
             let mut client = None;
             let mut push_interval = initial_interval;
+            let mut sym_cache = SymbolCache::new();
             loop {
                 tokio::time::sleep(push_interval).await;
-                let events = coll.lock().await.take_pending_events();
+                let mut events = coll.lock().await.take_pending_events();
+                sym_cache.symbolize_events(&mut events, target_pid);
                 let result = push_to_aggregator_with_retry(&mut client, &url, &agent, events).await;
                 match result {
                     Ok(Some(true)) => {
@@ -370,10 +373,12 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("Failed to unwrap collector Arc"))?
         .into_inner();
 
-    // Final push of any remaining events
+    // Final push of any remaining events (with symbolization)
     if let Some(ref url) = config.aggregator_url {
         let mut client = None;
-        let events = collector.take_pending_events();
+        let mut events = collector.take_pending_events();
+        let mut sym_cache = SymbolCache::new();
+        sym_cache.symbolize_events(&mut events, config.target_pid);
         let _ = push_to_aggregator_with_retry(&mut client, url, &agent_id(), events).await;
     }
 
@@ -400,7 +405,7 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use collector::lock::{LockCollector, LockEventBpf};
-    use collector::symbols::SymbolResolver;
+    use collector::symbols::{SymbolCache, SymbolResolver};
     use ebpf::lock_profiler::LockProfiler;
 
     info!("Profiling lock contention for {} seconds", config.duration.as_secs());
@@ -452,6 +457,7 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
     }
 
     // Spawn streaming push task if aggregator is configured
+    let target_pid = config.target_pid;
     let push_handle = if let Some(ref url) = config.aggregator_url {
         let url = url.clone();
         let agent = agent_id();
@@ -460,9 +466,11 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
         Some(tokio::spawn(async move {
             let mut client = None;
             let mut push_interval = initial_interval;
+            let mut sym_cache = SymbolCache::new();
             loop {
                 tokio::time::sleep(push_interval).await;
-                let events = coll.lock().await.take_pending_events();
+                let mut events = coll.lock().await.take_pending_events();
+                sym_cache.symbolize_events(&mut events, target_pid);
                 let result = push_to_aggregator_with_retry(&mut client, &url, &agent, events).await;
                 match result {
                     Ok(Some(true)) => {
@@ -496,10 +504,12 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
         .into_inner();
 
-    // Final push of remaining events
+    // Final push of remaining events (with symbolization)
     if let Some(ref url) = config.aggregator_url {
         let mut client = None;
-        let events = collector.take_pending_events();
+        let mut events = collector.take_pending_events();
+        let mut sym_cache = SymbolCache::new();
+        sym_cache.symbolize_events(&mut events, config.target_pid);
         let _ = push_to_aggregator_with_retry(&mut client, url, &agent_id(), events).await;
     }
 

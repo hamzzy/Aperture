@@ -172,6 +172,93 @@ impl SymbolResolver {
         Ok(())
     }
 
+    /// Resolve symbols for a batch of ProfileEvents in-place.
+    /// Populates `user_stack_symbols`/`kernel_stack_symbols` on CpuSample
+    /// and `stack_symbols` on LockEvent so the aggregator receives symbolized data.
+    pub fn symbolize_events(
+        &mut self,
+        events: &mut [aperture_shared::types::events::ProfileEvent],
+        pid: Option<i32>,
+    ) {
+        use aperture_shared::types::events::ProfileEvent;
+
+        // 1. Collect all unique IPs that need resolution, separated by address space
+        let mut user_ips: Vec<u64> = Vec::new();
+        let mut kernel_ips: Vec<u64> = Vec::new();
+        for event in events.iter() {
+            match event {
+                ProfileEvent::CpuSample(s) => {
+                    for &ip in &s.user_stack {
+                        if !self.cache.contains_key(&ip) && !user_ips.contains(&ip) {
+                            user_ips.push(ip);
+                        }
+                    }
+                    for &ip in &s.kernel_stack {
+                        if !self.cache.contains_key(&ip) && !kernel_ips.contains(&ip) {
+                            kernel_ips.push(ip);
+                        }
+                    }
+                }
+                ProfileEvent::Lock(ev) => {
+                    for &ip in &ev.stack_trace {
+                        // Lock stacks combine user+kernel; classify by address range
+                        if self.cache.contains_key(&ip) {
+                            continue;
+                        }
+                        let is_kernel = ip >= 0xffff_0000_0000_0000;
+                        if is_kernel {
+                            if !kernel_ips.contains(&ip) {
+                                kernel_ips.push(ip);
+                            }
+                        } else if !user_ips.contains(&ip) {
+                            user_ips.push(ip);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // 2. Batch-resolve user IPs (needs target PID for /proc/PID/maps)
+        if !user_ips.is_empty() {
+            if let Err(e) = self.symbolize_ips(&user_ips, pid) {
+                warn!("Failed to symbolize user IPs: {}", e);
+            }
+        }
+        // 3. Batch-resolve kernel IPs (uses /proc/kallsyms)
+        if !kernel_ips.is_empty() {
+            if let Err(e) = self.symbolize_ips(&kernel_ips, None) {
+                warn!("Failed to symbolize kernel IPs: {}", e);
+            }
+        }
+
+        // 4. Populate symbol fields on each event
+        for event in events.iter_mut() {
+            match event {
+                ProfileEvent::CpuSample(s) => {
+                    s.user_stack_symbols = s
+                        .user_stack
+                        .iter()
+                        .map(|ip| self.cache.get(ip).and_then(|f| f.function.clone()))
+                        .collect();
+                    s.kernel_stack_symbols = s
+                        .kernel_stack
+                        .iter()
+                        .map(|ip| self.cache.get(ip).and_then(|f| f.function.clone()))
+                        .collect();
+                }
+                ProfileEvent::Lock(ev) => {
+                    ev.stack_symbols = ev
+                        .stack_trace
+                        .iter()
+                        .map(|ip| self.cache.get(ip).and_then(|f| f.function.clone()))
+                        .collect();
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Get cache size (number of resolved symbols)
     pub fn cache_size(&self) -> usize {
         self.cache.len()
@@ -185,6 +272,160 @@ impl Default for SymbolResolver {
     }
 }
 
+/// A Send-safe symbol cache that can be held across `.await` points.
+///
+/// blazesym's `Symbolizer` uses `Rc` internally and is not `Send`, so it cannot
+/// live inside a `tokio::spawn` future. This type holds only the `HashMap` cache
+/// (which IS Send) and creates a temporary `Symbolizer` on each resolution call.
+pub struct SymbolCache {
+    cache: HashMap<u64, Frame>,
+}
+
+impl SymbolCache {
+    pub fn new() -> Self {
+        Self {
+            cache: HashMap::new(),
+        }
+    }
+
+    /// Resolve symbols for a batch of ProfileEvents in-place.
+    ///
+    /// Creates a temporary `Symbolizer` for each call (cheap — no persistent state
+    /// worth keeping), resolves unknown IPs, and populates the symbol fields.
+    pub fn symbolize_events(
+        &mut self,
+        events: &mut [aperture_shared::types::events::ProfileEvent],
+        pid: Option<i32>,
+    ) {
+        use aperture_shared::types::events::ProfileEvent;
+
+        // 1. Collect all unique IPs that need resolution, separated by address space
+        let mut user_ips: Vec<u64> = Vec::new();
+        let mut kernel_ips: Vec<u64> = Vec::new();
+        for event in events.iter() {
+            match event {
+                ProfileEvent::CpuSample(s) => {
+                    for &ip in &s.user_stack {
+                        if !self.cache.contains_key(&ip) && !user_ips.contains(&ip) {
+                            user_ips.push(ip);
+                        }
+                    }
+                    for &ip in &s.kernel_stack {
+                        if !self.cache.contains_key(&ip) && !kernel_ips.contains(&ip) {
+                            kernel_ips.push(ip);
+                        }
+                    }
+                }
+                ProfileEvent::Lock(ev) => {
+                    for &ip in &ev.stack_trace {
+                        if self.cache.contains_key(&ip) {
+                            continue;
+                        }
+                        let is_kernel = ip >= 0xffff_0000_0000_0000;
+                        if is_kernel {
+                            if !kernel_ips.contains(&ip) {
+                                kernel_ips.push(ip);
+                            }
+                        } else if !user_ips.contains(&ip) {
+                            user_ips.push(ip);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // 2. Batch-resolve IPs using a temporary Symbolizer
+        if !user_ips.is_empty() || !kernel_ips.is_empty() {
+            let symbolizer = Symbolizer::new();
+            if !user_ips.is_empty() {
+                Self::resolve_ips(&symbolizer, &mut self.cache, &user_ips, pid);
+            }
+            if !kernel_ips.is_empty() {
+                Self::resolve_ips(&symbolizer, &mut self.cache, &kernel_ips, None);
+            }
+            // symbolizer is dropped here — Rc freed before any .await
+        }
+
+        // 3. Populate symbol fields on each event
+        for event in events.iter_mut() {
+            match event {
+                ProfileEvent::CpuSample(s) => {
+                    s.user_stack_symbols = s
+                        .user_stack
+                        .iter()
+                        .map(|ip| self.cache.get(ip).and_then(|f| f.function.clone()))
+                        .collect();
+                    s.kernel_stack_symbols = s
+                        .kernel_stack
+                        .iter()
+                        .map(|ip| self.cache.get(ip).and_then(|f| f.function.clone()))
+                        .collect();
+                }
+                ProfileEvent::Lock(ev) => {
+                    ev.stack_symbols = ev
+                        .stack_trace
+                        .iter()
+                        .map(|ip| self.cache.get(ip).and_then(|f| f.function.clone()))
+                        .collect();
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn resolve_ips(
+        symbolizer: &Symbolizer,
+        cache: &mut HashMap<u64, Frame>,
+        ips: &[u64],
+        pid: Option<i32>,
+    ) {
+        let input = Input::AbsAddr(ips);
+        let source = if let Some(pid) = pid {
+            Source::Process(Process::new(Pid::from(pid as u32)))
+        } else {
+            Source::Kernel(Kernel::default())
+        };
+
+        match symbolizer.symbolize(&source, input) {
+            Ok(results) => {
+                for (i, result) in results.iter().enumerate() {
+                    let ip = ips[i];
+                    let frame = match result {
+                        Symbolized::Sym(sym) => Frame {
+                            ip,
+                            function: Some(sym.name.to_string()),
+                            file: sym.module.as_ref().and_then(|m| m.to_str()).map(String::from),
+                            line: None,
+                            module: sym.module.as_ref().and_then(|m| m.to_str()).map(String::from),
+                        },
+                        Symbolized::Unknown(_) => Frame {
+                            ip,
+                            function: Some(format!("0x{:x}", ip)),
+                            file: None,
+                            line: None,
+                            module: None,
+                        },
+                    };
+                    cache.insert(ip, frame);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to symbolize batch: {}", e);
+                for &ip in ips {
+                    cache.entry(ip).or_insert_with(|| Frame {
+                        ip,
+                        function: Some(format!("0x{:x}", ip)),
+                        file: None,
+                        line: None,
+                        module: None,
+                    });
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +434,11 @@ mod tests {
     fn test_resolver_creation() {
         let resolver = SymbolResolver::new();
         assert_eq!(resolver.cache_size(), 0);
+    }
+
+    #[test]
+    fn test_symbol_cache_is_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<SymbolCache>();
     }
 }

@@ -46,6 +46,9 @@ export function useAggregateQuery(params: {
         event_type: event_type || undefined,
       }),
     enabled: enabled && (time_start_ns != null || time_end_ns != null),
+    retry: 1,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
   });
 }
 

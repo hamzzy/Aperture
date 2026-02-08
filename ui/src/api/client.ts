@@ -26,13 +26,20 @@ export async function fetchAggregate(params: {
   limit?: number;
   event_type?: string;
 }): Promise<AggregateResultJson> {
-  const res = await fetch(`${API}/aggregate`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify(params),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(`${API}/aggregate`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(params),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function fetchDiff(params: {

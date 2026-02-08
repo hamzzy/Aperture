@@ -93,12 +93,24 @@ impl Aggregator for AggregatorService {
             req.agent_id
         };
 
-        let event_count = Message::from_bytes(&req.payload)
-            .map(|m| m.events.len() as u32)
-            .unwrap_or(0);
+        let msg_res = Message::from_bytes(&req.payload);
+        let event_count = match &msg_res {
+            Ok(m) => m.events.len() as u32,
+            Err(e) => {
+                tracing::warn!(
+                    agent_id = %agent_id,
+                    error = %e,
+                    "Failed to decode push payload (schema mismatch?)"
+                );
+                0
+            }
+        };
 
         let payload = req.payload;
-        match self.buffer.push(agent_id.clone(), req.sequence, payload.clone()) {
+        match self
+            .buffer
+            .push(agent_id.clone(), req.sequence, event_count, payload.clone())
+        {
             Ok(()) => {}
             Err(e) => {
                 metrics::PUSH_TOTAL.with_label_values(&["error"]).inc();

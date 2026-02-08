@@ -148,4 +148,43 @@ mod tests {
         assert_eq!(sample.pid, deserialized.pid);
         assert_eq!(sample.timestamp, deserialized.timestamp);
     }
+
+    #[test]
+    fn test_profile_event_bincode_serialization() {
+        use bincode::Options;
+        let config = bincode::config::DefaultOptions::new()
+            .with_fixint_encoding()
+            .allow_trailing_bytes();
+
+        let event = ProfileEvent::Syscall(SyscallEvent {
+            timestamp: 0x1122334455667788,
+            pid: 0x11111111,
+            tid: 0x22222222,
+            syscall_id: 198, // The "found 198" value
+            duration_ns: 1000,
+            return_value: 0,
+            comm: "test".to_string(),
+        });
+
+        let bytes = config.serialize(&event).unwrap();
+        
+        // Expected layout (fixint):
+        // 0-3: Tag (u32) = 2
+        // 4-11: TS (u64)
+        // 12-15: Pid (i32)
+        // 16-19: Tid (i32)
+        // 20-23: SyscallId (u32) = 198
+        
+        assert_eq!(bytes[0..4], [2, 0, 0, 0]); // Tag 2
+        assert_eq!(bytes[20..24], [198, 0, 0, 0]); // Syscall ID 198 (le)
+
+        let deserialized: ProfileEvent = config.deserialize(&bytes).unwrap();
+        match deserialized {
+            ProfileEvent::Syscall(e) => {
+                assert_eq!(e.syscall_id, 198);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
 }

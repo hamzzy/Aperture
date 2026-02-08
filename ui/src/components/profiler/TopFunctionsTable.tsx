@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { Search, Columns, Maximize2 } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StackCount, Frame } from "@/api/types";
 
@@ -12,42 +11,12 @@ function frameLabel(f: Frame): string {
 export interface FunctionRow {
   name: string;
   module: string;
-  coresSelf: number;
-  coresTotal: number;
-  selfCpu: string;
-  totalCpu: string;
+  self: number;
+  total: number;
+  selfPct: number;
+  totalPct: number;
   type: "native" | "python" | "kernel" | "cuda";
 }
-
-const MOCK_FUNCTIONS: FunctionRow[] = [
-  {
-    name: "_PyEval_EvalFrameDefault",
-    module: "libpython3.11",
-    coresSelf: 0.33,
-    coresTotal: 217.83,
-    selfCpu: "0.15%",
-    totalCpu: "99.96%",
-    type: "python",
-  },
-  {
-    name: "worker",
-    module: "app/main.py",
-    coresSelf: 2.17,
-    coresTotal: 183.42,
-    selfCpu: "0.99%",
-    totalCpu: "84.17%",
-    type: "python",
-  },
-  {
-    name: "cuda_kernel_launch",
-    module: "libcuda.so",
-    coresSelf: 8.5,
-    coresTotal: 174.92,
-    selfCpu: "3.90%",
-    totalCpu: "80.27%",
-    type: "cuda",
-  },
-];
 
 const typeColor: Record<string, string> = {
   native: "bg-orange-600",
@@ -56,64 +25,141 @@ const typeColor: Record<string, string> = {
   cuda: "bg-violet-600",
 };
 
-function inferType(module: string): FunctionRow["type"] {
+function inferType(name: string, module: string): FunctionRow["type"] {
   if (module.includes("python") || module.endsWith(".py")) return "python";
   if (module.includes("cuda") || module.includes("libcuda")) return "cuda";
-  if (module.includes("libc") || module.includes("sysdeps")) return "kernel";
+  if (
+    name.startsWith("__") ||
+    name.startsWith("do_") ||
+    name.startsWith("sys_") ||
+    name.startsWith("entry_") ||
+    module.includes("vmlinux") ||
+    module.includes("[kernel")
+  ) {
+    return "kernel";
+  }
   return "native";
 }
 
-/** Build function rows from Phase 8 API stacks (top frame = function, count = samples) */
-export function rowsFromStacks(stacks: StackCount[], totalSamples: number): FunctionRow[] {
-  const byLabel = new Map<string, { count: number; module: string }>();
+/**
+ * Build function rows with proper self/total metrics.
+ * - self: count of stacks where this function is the top (leaf) frame
+ * - total: count of stacks where this function appears anywhere
+ */
+export function rowsFromStacks(
+  stacks: StackCount[],
+  totalSamples: number,
+): FunctionRow[] {
+  const selfMap = new Map<string, number>();
+  const totalMap = new Map<string, number>();
+  const moduleMap = new Map<string, string>();
+
   for (const { stack, count } of stacks) {
     const frames = stack.frames;
     if (frames.length === 0) continue;
-    const top = frames[0];
-    const name = frameLabel(top);
-    const module = top.module ?? top.file ?? "";
-    const prev = byLabel.get(name);
-    if (prev) prev.count += count;
-    else byLabel.set(name, { count, module });
+
+    // Self: top frame only (index 0 = leaf)
+    const topLabel = frameLabel(frames[0]);
+    selfMap.set(topLabel, (selfMap.get(topLabel) ?? 0) + count);
+    if (!moduleMap.has(topLabel)) {
+      moduleMap.set(topLabel, frames[0].module ?? frames[0].file ?? "");
+    }
+
+    // Total: every unique function in the stack
+    const seen = new Set<string>();
+    for (const f of frames) {
+      const label = frameLabel(f);
+      if (seen.has(label)) continue;
+      seen.add(label);
+      totalMap.set(label, (totalMap.get(label) ?? 0) + count);
+      if (!moduleMap.has(label)) {
+        moduleMap.set(label, f.module ?? f.file ?? "");
+      }
+    }
   }
+
   const total = totalSamples || 1;
-  return [...byLabel.entries()]
-    .map(([name, { count, module }]) => ({
+  const rows: FunctionRow[] = [];
+
+  // Union of all function names from both maps
+  const allNames = new Set([...selfMap.keys(), ...totalMap.keys()]);
+  for (const name of allNames) {
+    const selfCount = selfMap.get(name) ?? 0;
+    const totalCount = totalMap.get(name) ?? 0;
+    const mod = moduleMap.get(name) ?? "";
+    rows.push({
       name,
-      module,
-      coresSelf: count,
-      coresTotal: count,
-      selfCpu: `${((count / total) * 100).toFixed(2)}%`,
-      totalCpu: `${((count / total) * 100).toFixed(2)}%`,
-      type: inferType(module),
-    }))
-    .sort((a, b) => b.coresTotal - a.coresTotal);
+      module: mod,
+      self: selfCount,
+      total: totalCount,
+      selfPct: (selfCount / total) * 100,
+      totalPct: (totalCount / total) * 100,
+      type: inferType(name, mod),
+    });
+  }
+
+  return rows.sort((a, b) => b.self - a.self);
 }
 
+type SortKey = "self" | "total" | "selfPct" | "totalPct";
+
 interface TopFunctionsTableProps {
-  /** Phase 8 API: when provided, use real data instead of mock */
   stacks?: StackCount[];
   totalSamples?: number;
 }
 
-export function TopFunctionsTable({ stacks, totalSamples = 0 }: TopFunctionsTableProps) {
+export function TopFunctionsTable({
+  stacks,
+  totalSamples = 0,
+}: TopFunctionsTableProps) {
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"coresTotal" | "coresSelf">("coresTotal");
+  const [sortKey, setSortKey] = useState<SortKey>("self");
+  const [sortAsc, setSortAsc] = useState(false);
 
   const rows = useMemo(() => {
     if (stacks && stacks.length > 0) {
       return rowsFromStacks(stacks, totalSamples);
     }
-    return MOCK_FUNCTIONS;
+    return [];
   }, [stacks, totalSamples]);
 
-  const filtered = useMemo(
-    () =>
-      rows
-        .filter((f) => f.name.toLowerCase().includes(search.toLowerCase()))
-        .sort((a, b) => b[sortKey] - a[sortKey]),
-    [rows, search, sortKey]
-  );
+  const filtered = useMemo(() => {
+    let result = rows;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (f) =>
+          f.name.toLowerCase().includes(q) ||
+          f.module.toLowerCase().includes(q),
+      );
+    }
+    return result.sort((a, b) => {
+      const diff = a[sortKey] - b[sortKey];
+      return sortAsc ? diff : -diff;
+    });
+  }, [rows, search, sortKey, sortAsc]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(false);
+    }
+  };
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return " ↕";
+    return sortAsc ? " ↑" : " ↓";
+  };
+
+  if (!stacks || stacks.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+        No function data available.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -127,83 +173,132 @@ export function TopFunctionsTable({ stacks, totalSamples = 0 }: TopFunctionsTabl
             className="h-8 pl-8 text-xs bg-background border-border"
           />
         </div>
-        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground">
-          <Columns className="h-3.5 w-3.5" />
-          Columns
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-          <Maximize2 className="h-3.5 w-3.5" />
-        </Button>
+        <span className="text-xs text-muted-foreground">
+          {filtered.length} functions
+        </span>
       </div>
 
       <div className="rounded-md border border-border overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground">Function</th>
-              <th
-                className={cn(
-                  "text-right px-3 py-2 font-medium cursor-pointer hover:text-foreground",
-                  sortKey === "coresSelf" ? "text-foreground" : "text-muted-foreground"
-                )}
-                onClick={() => setSortKey("coresSelf")}
-              >
-                Samples (self) ↕
-              </th>
-              <th
-                className={cn(
-                  "text-right px-3 py-2 font-medium cursor-pointer hover:text-foreground",
-                  sortKey === "coresTotal" ? "text-foreground" : "text-muted-foreground"
-                )}
-                onClick={() => setSortKey("coresTotal")}
-              >
-                Samples (total) ↕
-              </th>
-              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Self CPU</th>
-              <th className="text-right px-3 py-2 font-medium text-muted-foreground">Total CPU</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((fn, i) => (
-              <tr
-                key={i}
-                className="border-b border-border/50 hover:bg-muted/20 cursor-pointer transition-colors"
-              >
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("h-3 w-3 rounded-sm shrink-0", typeColor[fn.type])} />
-                    <div>
-                      <span className="font-mono text-foreground">{fn.name}</span>
-                      <span className="block text-[10px] text-muted-foreground">{fn.module || "—"}</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="text-right px-3 py-2 font-mono text-foreground">
-                  {fn.coresSelf.toLocaleString()}
-                </td>
-                <td className="text-right px-3 py-2 font-mono text-foreground">
-                  {fn.coresTotal.toLocaleString()}
-                </td>
-                <td className="text-right px-3 py-2 font-mono text-muted-foreground">{fn.selfCpu}</td>
-                <td className="text-right px-3 py-2">
-                  <div className="flex items-center justify-end gap-2">
-                    <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{
-                          width: fn.totalCpu.replace("%", "").trim()
-                            ? `${Math.min(100, parseFloat(fn.totalCpu))}%`
-                            : "0%",
-                        }}
-                      />
-                    </div>
-                    <span className="font-mono text-foreground w-14 text-right">{fn.totalCpu}</span>
-                  </div>
-                </td>
+        <div className="overflow-auto" style={{ maxHeight: 500 }}>
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-border bg-muted/50">
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground w-[45%]">
+                  Function
+                </th>
+                <th
+                  className={cn(
+                    "text-right px-3 py-2 font-medium cursor-pointer hover:text-foreground whitespace-nowrap",
+                    sortKey === "self"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                  onClick={() => handleSort("self")}
+                >
+                  Self{sortIndicator("self")}
+                </th>
+                <th
+                  className={cn(
+                    "text-right px-3 py-2 font-medium cursor-pointer hover:text-foreground whitespace-nowrap",
+                    sortKey === "selfPct"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                  onClick={() => handleSort("selfPct")}
+                >
+                  Self %{sortIndicator("selfPct")}
+                </th>
+                <th
+                  className={cn(
+                    "text-right px-3 py-2 font-medium cursor-pointer hover:text-foreground whitespace-nowrap",
+                    sortKey === "total"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                  onClick={() => handleSort("total")}
+                >
+                  Total{sortIndicator("total")}
+                </th>
+                <th
+                  className={cn(
+                    "text-right px-3 py-2 font-medium cursor-pointer hover:text-foreground whitespace-nowrap",
+                    sortKey === "totalPct"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                  onClick={() => handleSort("totalPct")}
+                >
+                  Total %{sortIndicator("totalPct")}
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((fn, i) => (
+                <tr
+                  key={`${fn.name}-${i}`}
+                  className="border-b border-border/50 hover:bg-muted/20 transition-colors"
+                >
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-sm shrink-0",
+                          typeColor[fn.type],
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <span className="font-mono text-foreground block truncate">
+                          {fn.name}
+                        </span>
+                        {fn.module && (
+                          <span className="block text-[10px] text-muted-foreground truncate">
+                            {fn.module}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="text-right px-3 py-1.5 font-mono text-foreground">
+                    {fn.self.toLocaleString()}
+                  </td>
+                  <td className="text-right px-3 py-1.5">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-orange-500"
+                          style={{
+                            width: `${Math.min(100, fn.selfPct)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="font-mono text-muted-foreground w-14 text-right">
+                        {fn.selfPct.toFixed(1)}%
+                      </span>
+                    </div>
+                  </td>
+                  <td className="text-right px-3 py-1.5 font-mono text-foreground">
+                    {fn.total.toLocaleString()}
+                  </td>
+                  <td className="text-right px-3 py-1.5">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{
+                            width: `${Math.min(100, fn.totalPct)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="font-mono text-muted-foreground w-14 text-right">
+                        {fn.totalPct.toFixed(1)}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
