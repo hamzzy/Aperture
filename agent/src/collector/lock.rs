@@ -38,6 +38,12 @@ pub struct LockCollector {
     push_cursor: usize,
 }
 
+impl Default for LockCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LockCollector {
     /// Create a new lock collector
     pub fn new() -> Self {

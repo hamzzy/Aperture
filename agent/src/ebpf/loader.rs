@@ -28,6 +28,12 @@ pub struct PerfEventLinks {
     links: Vec<PerfEventLinkId>,
 }
 
+impl Default for PerfEventLinks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PerfEventLinks {
     pub fn new() -> Self {
         Self { links: Vec::new() }
@@ -46,7 +52,7 @@ pub fn load_cpu_profiler() -> Result<Ebpf> {
 
     // For debugging, try loading from file first
     #[cfg(debug_assertions)]
-    {
+    return {
         use std::path::PathBuf;
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("../target/bpfel-unknown-none/debug/cpu-profiler");
@@ -58,11 +64,11 @@ pub fn load_cpu_profiler() -> Result<Ebpf> {
                 .load_file(&path)
                 .context("Failed to load eBPF program from file")?;
             info!("Successfully loaded CPU profiler eBPF program from file");
-            return Ok(bpf);
+            Ok(bpf)
         } else {
             anyhow::bail!("eBPF program file not found: {:?}", path);
         }
-    }
+    };
 
     // Release: try file first (Docker copies eBPF to /usr/local/share/aperture), then embedded
     #[cfg(not(debug_assertions))]
@@ -219,6 +225,12 @@ pub struct TracepointLinks {
     links: Vec<TracePointLinkId>,
 }
 
+impl Default for TracepointLinks {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TracepointLinks {
     pub fn new() -> Self {
         Self { links: Vec::new() }
@@ -232,6 +244,12 @@ impl TracepointLinks {
 /// Storage for raw tracepoint links
 pub struct RawTracepointLinks {
     links: Vec<RawTracePointLinkId>,
+}
+
+impl Default for RawTracepointLinks {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RawTracepointLinks {

@@ -57,6 +57,7 @@ pub async fn run(args: ProfileArgs) -> Result<()> {
         json_output: args.json,
         filter_path: None,
         aggregator_url: args.aggregator,
+        push_interval_secs: None,
     };
 
     aperture_agent::run_profiler(config).await

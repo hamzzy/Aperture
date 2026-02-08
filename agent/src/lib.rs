@@ -23,8 +23,7 @@ use tracing::{debug, info, warn};
 /// Global monotonic sequence counter for aggregator pushes.
 static PUSH_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
-/// How often to stream pending events to the aggregator during profiling.
-const PUSH_INTERVAL: Duration = Duration::from_secs(5);
+/// Max push interval when backing off (cap for streaming to aggregator).
 const PUSH_INTERVAL_MAX: Duration = Duration::from_secs(30);
 
 /// Generate an agent ID from the hostname (or fallback to PID).
@@ -45,7 +44,6 @@ fn max_message_size_bytes() -> usize {
 }
 
 /// When the server returns "message length too large", the agent splits the batch and retries (no pre-size check).
-
 /// gRPC request timeout (default 120s). Large pushes (e.g. millions of syscall events) can take a long time.
 fn grpc_timeout() -> Duration {
     std::env::var("APERTURE_GRPC_TIMEOUT_SECS")
@@ -374,21 +372,15 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
                 .map(|_| BytesMut::with_capacity(core::mem::size_of::<SampleEvent>() + 64))
                 .collect::<Vec<_>>();
 
-            loop {
-                match buf.read_events(&mut buffers).await {
-                    Ok(events) => {
-                        for i in 0..events.read {
-                            let buf_ref = &buffers[i];
-                            if buf_ref.len() >= core::mem::size_of::<SampleEvent>() {
-                                let event = unsafe { &*(buf_ref.as_ptr() as *const SampleEvent) };
-                                let mut coll = collector.lock().await;
-                                if let Err(e) = coll.process_event(event, &stack_map) {
-                                    debug!("Error processing event: {}", e);
-                                }
-                            }
+            while let Ok(events) = buf.read_events(&mut buffers).await {
+                for buf_ref in buffers.iter().take(events.read) {
+                    if buf_ref.len() >= core::mem::size_of::<SampleEvent>() {
+                        let event = unsafe { &*(buf_ref.as_ptr() as *const SampleEvent) };
+                        let mut coll = collector.lock().await;
+                        if let Err(e) = coll.process_event(event, &stack_map) {
+                            debug!("Error processing event: {}", e);
                         }
                     }
-                    Err(_) => break,
                 }
             }
         }));
@@ -516,21 +508,15 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
                 .map(|_| BytesMut::with_capacity(core::mem::size_of::<LockEventBpf>() + 64))
                 .collect::<Vec<_>>();
 
-            loop {
-                match buf.read_events(&mut buffers).await {
-                    Ok(events) => {
-                        for i in 0..events.read {
-                            let buf_ref = &buffers[i];
-                            if buf_ref.len() >= core::mem::size_of::<LockEventBpf>() {
-                                let event = unsafe { &*(buf_ref.as_ptr() as *const LockEventBpf) };
-                                let mut coll = collector.lock().await;
-                                if let Err(e) = coll.process_event(event, &stack_map) {
-                                    debug!("Error processing lock event: {}", e);
-                                }
-                            }
+            while let Ok(events) = buf.read_events(&mut buffers).await {
+                for buf_ref in buffers.iter().take(events.read) {
+                    if buf_ref.len() >= core::mem::size_of::<LockEventBpf>() {
+                        let event = unsafe { &*(buf_ref.as_ptr() as *const LockEventBpf) };
+                        let mut coll = collector.lock().await;
+                        if let Err(e) = coll.process_event(event, &stack_map) {
+                            debug!("Error processing lock event: {}", e);
                         }
                     }
-                    Err(_) => break,
                 }
             }
         }));
@@ -643,22 +629,16 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
                 .map(|_| BytesMut::with_capacity(core::mem::size_of::<SyscallEventBpf>() + 64))
                 .collect::<Vec<_>>();
 
-            loop {
-                match buf.read_events(&mut buffers).await {
-                    Ok(events) => {
-                        for i in 0..events.read {
-                            let buf_ref = &buffers[i];
-                            if buf_ref.len() >= core::mem::size_of::<SyscallEventBpf>() {
-                                let event =
-                                    unsafe { &*(buf_ref.as_ptr() as *const SyscallEventBpf) };
-                                let mut coll = collector.lock().await;
-                                if let Err(e) = coll.process_event(event) {
-                                    debug!("Error processing syscall event: {}", e);
-                                }
-                            }
+            while let Ok(events) = buf.read_events(&mut buffers).await {
+                for buf_ref in buffers.iter().take(events.read) {
+                    if buf_ref.len() >= core::mem::size_of::<SyscallEventBpf>() {
+                        let event =
+                            unsafe { &*(buf_ref.as_ptr() as *const SyscallEventBpf) };
+                        let mut coll = collector.lock().await;
+                        if let Err(e) = coll.process_event(event) {
+                            debug!("Error processing syscall event: {}", e);
                         }
                     }
-                    Err(_) => break,
                 }
             }
         }));

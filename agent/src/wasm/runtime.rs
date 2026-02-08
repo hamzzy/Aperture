@@ -8,6 +8,7 @@ use aperture_shared::wasm::{FilterInput, FilterResult};
 
 /// WASM runtime for executing filters
 pub struct WasmRuntime {
+    #[allow(dead_code)] // Kept so Engine outlives Module and Store
     engine: Engine,
     module: Module,
     store: Store<()>,

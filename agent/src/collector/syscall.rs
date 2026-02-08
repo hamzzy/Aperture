@@ -37,6 +37,12 @@ pub struct SyscallCollector {
     push_cursor: usize,
 }
 
+impl Default for SyscallCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SyscallCollector {
     /// Create a new syscall collector
     pub fn new() -> Self {

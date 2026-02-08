@@ -300,7 +300,7 @@ impl SymbolResolver {
                         self.cache
                             .get(ip)
                             .and_then(|f| f.function.as_ref())
-                            .map_or(false, |n| !n.starts_with("0x"))
+                            .is_some_and(|n| !n.starts_with("0x"))
                     })
                     .count();
                 total_resolved += newly_resolved;
@@ -421,6 +421,12 @@ impl Default for SymbolResolver {
 /// (which IS Send) and creates a temporary `Symbolizer` on each resolution call.
 pub struct SymbolCache {
     cache: HashMap<u64, Frame>,
+}
+
+impl Default for SymbolCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SymbolCache {
