@@ -1,5 +1,6 @@
 //! Admin HTTP server for health checks, metrics, and REST API (Phase 7–8)
 
+use crate::alerts::AlertStore;
 use crate::audit;
 use crate::buffer::InMemoryBuffer;
 use crate::metrics;
@@ -16,16 +17,19 @@ pub async fn serve_admin(
     buffer: Arc<InMemoryBuffer>,
     store: Option<Arc<dyn BatchStore>>,
 ) -> Result<(), hyper::Error> {
+    let alert_store = Arc::new(AlertStore::new());
     let make_svc = make_service_fn(move |_| {
         let buffer = buffer.clone();
         let store = store.clone();
+        let alert_store = alert_store.clone();
         async move {
             Ok::<_, hyper::Error>(service_fn(move |req: Request<Body>| {
                 let buffer = buffer.clone();
                 let store = store.clone();
+                let alert_store = alert_store.clone();
                 async move {
                     if req.uri().path().starts_with("/api") {
-                        api::handle_api(req, &buffer, store).await
+                        api::handle_api(req, &buffer, store, &alert_store).await
                     } else {
                         handle(req, &buffer)
                     }

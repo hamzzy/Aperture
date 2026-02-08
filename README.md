@@ -7,8 +7,9 @@
 
 ## Overview
 
-Aperture is a high-performance profiling system that uses eBPF for low-overhead performance monitoring. The project aims to provide CPU, GPU, lock contention, and syscall profiling in a distributed architecture.
+Aperture is a high-performance profiling system that uses eBPF for low-overhead performance monitoring. The project aims to provide CPU, GPU(WIP), lock contention, and syscall profiling in a distributed architecture.
 
+<img src ="./intro.png"/>
 
 ## Features (Planned)
 

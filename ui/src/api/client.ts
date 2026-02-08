@@ -2,7 +2,17 @@
  * Aperture Phase 8 – REST API client (aggregator admin port, e.g. 9090)
  */
 
-import type { AggregateResultJson, BatchInfo, HealthInfo } from "./types";
+import type {
+  AggregateResultJson,
+  AlertEvent,
+  AlertMetric,
+  AlertOperator,
+  AlertRule,
+  AlertSeverity,
+  BatchInfo,
+  EvaluateResult,
+  HealthInfo,
+} from "./types";
 
 const API = "/api";
 
@@ -78,6 +88,64 @@ export async function fetchBatches(params?: {
 
 export async function fetchHealth(): Promise<HealthInfo> {
   const res = await fetch(`${API}/health`, { headers: headers() });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Alerts ──────────────────────────────────────────────────────────────
+
+export async function fetchAlertRules(): Promise<AlertRule[]> {
+  const res = await fetch(`${API}/alerts`, { headers: headers() });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function createAlertRule(params: {
+  name: string;
+  metric: AlertMetric;
+  operator: AlertOperator;
+  threshold: number;
+  severity: AlertSeverity;
+}): Promise<{ id: string }> {
+  const res = await fetch(`${API}/alerts`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteAlertRule(id: string): Promise<{ deleted: boolean }> {
+  const res = await fetch(`${API}/alerts/${id}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function toggleAlertRule(id: string): Promise<{ enabled: boolean }> {
+  const res = await fetch(`${API}/alerts/${id}/toggle`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function fetchAlertHistory(limit?: number): Promise<AlertEvent[]> {
+  const q = limit ? `?limit=${limit}` : "";
+  const res = await fetch(`${API}/alerts/history${q}`, { headers: headers() });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function evaluateAlerts(): Promise<EvaluateResult> {
+  const res = await fetch(`${API}/alerts/evaluate`, {
+    method: "POST",
+    headers: headers(),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

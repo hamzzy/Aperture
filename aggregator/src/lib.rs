@@ -6,6 +6,7 @@
 pub const MAX_AGGREGATE_BATCH_LIMIT: u32 = 100;
 
 pub mod aggregate;
+pub mod alerts;
 pub mod audit;
 pub mod buffer;
 pub mod config;

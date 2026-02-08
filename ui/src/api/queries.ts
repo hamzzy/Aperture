@@ -5,18 +5,26 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  createAlertRule,
+  deleteAlertRule,
+  evaluateAlerts,
   fetchAggregate,
+  fetchAlertHistory,
+  fetchAlertRules,
   fetchBatches,
   fetchDiff,
   fetchHealth,
+  toggleAlertRule,
 } from "./client";
-import type { CpuDiffJson } from "./types";
+import type { AlertMetric, AlertOperator, AlertSeverity, CpuDiffJson } from "./types";
 
 export const queryKeys = {
   health: ["health"] as const,
   aggregate: (timeStartNs?: number, timeEndNs?: number, eventType?: string) =>
     ["aggregate", timeStartNs, timeEndNs, eventType] as const,
   batches: (agentId?: string) => ["batches", agentId] as const,
+  alertRules: ["alertRules"] as const,
+  alertHistory: ["alertHistory"] as const,
 };
 
 export function useHealthQuery() {
@@ -69,6 +77,73 @@ export function useDiffMutation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["aggregate"] });
+    },
+  });
+}
+
+// ── Alerts ──────────────────────────────────────────────────────────────
+
+export function useAlertRulesQuery() {
+  return useQuery({
+    queryKey: queryKeys.alertRules,
+    queryFn: fetchAlertRules,
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+}
+
+export function useAlertHistoryQuery(limit = 100) {
+  return useQuery({
+    queryKey: queryKeys.alertHistory,
+    queryFn: () => fetchAlertHistory(limit),
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+}
+
+export function useCreateAlertMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: {
+      name: string;
+      metric: AlertMetric;
+      operator: AlertOperator;
+      threshold: number;
+      severity: AlertSeverity;
+    }) => createAlertRule(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.alertRules });
+    },
+  });
+}
+
+export function useDeleteAlertMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteAlertRule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.alertRules });
+      queryClient.invalidateQueries({ queryKey: queryKeys.alertHistory });
+    },
+  });
+}
+
+export function useToggleAlertMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => toggleAlertRule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.alertRules });
+    },
+  });
+}
+
+export function useEvaluateAlertsMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: evaluateAlerts,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.alertHistory });
     },
   });
 }

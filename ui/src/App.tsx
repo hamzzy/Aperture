@@ -10,6 +10,7 @@ import TopFunctionsPage from "./pages/TopFunctionsPage";
 import SyscallsPage from "./pages/SyscallsPage";
 import ComparisonPage from "./pages/ComparisonPage";
 import TimelinePage from "./pages/TimelinePage";
+import AlertsPage from "./pages/AlertsPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/syscalls" element={<SyscallsPage />} />
           <Route path="/comparison" element={<ComparisonPage />} />
           <Route path="/timeline" element={<TimelinePage />} />
+          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
           </Routes>

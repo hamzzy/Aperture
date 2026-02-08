@@ -103,3 +103,54 @@ export interface HealthInfo {
   clickhouse_flush_error: number;
   clickhouse_pending_rows: number;
 }
+
+// ── Alerts ──────────────────────────────────────────────────────────────
+
+export type AlertMetric =
+  | "buffer_utilization"
+  | "push_error_rate"
+  | "push_errors_total"
+  | "clickhouse_flush_errors"
+  | "clickhouse_pending_rows"
+  | "event_throughput";
+
+export type AlertOperator = "gt" | "gte" | "lt" | "lte" | "eq";
+
+export type AlertSeverity = "info" | "warning" | "critical";
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  metric: AlertMetric;
+  operator: AlertOperator;
+  threshold: number;
+  severity: AlertSeverity;
+  enabled: boolean;
+  created_at: number;
+}
+
+export interface AlertEvent {
+  rule_id: string;
+  rule_name: string;
+  severity: AlertSeverity;
+  metric: AlertMetric;
+  value: number;
+  threshold: number;
+  operator: AlertOperator;
+  message: string;
+  fired_at: number;
+}
+
+export interface MetricSnapshot {
+  buffer_utilization: number;
+  push_error_rate: number;
+  push_errors_total: number;
+  clickhouse_flush_errors: number;
+  clickhouse_pending_rows: number;
+  event_throughput: number;
+}
+
+export interface EvaluateResult {
+  fired: AlertEvent[];
+  snapshot: MetricSnapshot;
+}
