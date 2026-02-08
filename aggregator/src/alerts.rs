@@ -142,6 +142,12 @@ struct AlertStoreInner {
     next_id: u64,
 }
 
+impl Default for AlertStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AlertStore {
     pub fn new() -> Self {
         Self {

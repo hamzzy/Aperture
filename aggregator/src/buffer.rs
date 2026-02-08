@@ -106,6 +106,11 @@ impl InMemoryBuffer {
         Ok(batches.len())
     }
 
+    /// Returns true if the buffer contains no batches.
+    pub fn is_empty(&self) -> Result<bool, String> {
+        Ok(self.len()? == 0)
+    }
+
     /// Buffer utilization as a fraction (0.0 to 1.0).
     pub fn utilization(&self) -> f64 {
         let len = self.len().unwrap_or(0);

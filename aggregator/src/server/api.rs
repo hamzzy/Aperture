@@ -123,7 +123,7 @@ pub async fn handle_api(
                 }
             }
         }
-        match buffer.query(agent_id.as_ref().map(|s| s.as_str()), limit) {
+        match buffer.query(agent_id.as_deref(), limit) {
             Ok(batches) => {
                 let list: Vec<serde_json::Value> = batches
                     .into_iter()
@@ -149,9 +149,7 @@ pub async fn handle_api(
     }
 
     if path == "/api/aggregate" && method == hyper::Method::POST {
-        let body_bytes = to_bytes(req.into_body())
-            .await
-            .map_err(hyper::Error::from)?;
+        let body_bytes = to_bytes(req.into_body()).await?;
         let api_req: AggregateRequest = match serde_json::from_slice(&body_bytes) {
             Ok(r) => r,
             Err(e) => {
@@ -240,9 +238,7 @@ pub async fn handle_api(
                 return Ok(res);
             }
         };
-        let body_bytes = to_bytes(req.into_body())
-            .await
-            .map_err(hyper::Error::from)?;
+        let body_bytes = to_bytes(req.into_body()).await?;
         let api_req: DiffRequest = match serde_json::from_slice(&body_bytes) {
             Ok(r) => r,
             Err(e) => {
@@ -365,9 +361,7 @@ pub async fn handle_api(
 
     // POST /api/alerts — create a new alert rule
     if path == "/api/alerts" && method == hyper::Method::POST {
-        let body_bytes = to_bytes(req.into_body())
-            .await
-            .map_err(hyper::Error::from)?;
+        let body_bytes = to_bytes(req.into_body()).await?;
         #[derive(serde::Deserialize)]
         struct CreateAlertRequest {
             name: String,

@@ -65,7 +65,7 @@ Target Host(s)                              Aggregator
 The easiest way to get everything running:
 
 ```bash
-git clone https://github.com/yourusername/aperture.git
+git clone https://github.com/hamzzy/Aperture.git
 cd aperture
 docker compose up -d    # Starts ClickHouse + Aggregator + Agent
 ```
@@ -86,7 +86,7 @@ cd ui && npm install && npm run dev
 ### Option 2: Install from release
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/aperture/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hamzzy/aperture/main/scripts/install.sh | bash
 ```
 
 Downloads the latest release binaries for your architecture (`x86_64` or `aarch64`) and installs to `/usr/local/bin`.
@@ -94,7 +94,7 @@ Downloads the latest release binaries for your architecture (`x86_64` or `aarch6
 ### Option 3: Build from source
 
 ```bash
-git clone https://github.com/yourusername/aperture.git
+git clone https://github.com/hamzzy/aperture.git
 cd aperture
 
 # Build aggregator + CLI (any platform)
@@ -195,39 +195,6 @@ aperture-cli diff --endpoint http://127.0.0.1:50051 --event_type cpu --limit 100
 | `APERTURE_ADMIN_LISTEN` | `0.0.0.0:9090` | HTTP admin/API bind address |
 | `APERTURE_AGGREGATOR_LISTEN` | `0.0.0.0:50051` | gRPC bind address |
 
-## Repository Structure
-
-```text
-aperture/
-├── agent/                 # Userspace profiling agent (loads eBPF, resolves symbols)
-├── agent-ebpf/            # eBPF programs (no_std, bpfel-unknown-none target)
-│   └── src/
-│       ├── cpu_profiler.rs    # perf_event CPU sampling
-│       ├── lock_profiler.rs   # futex tracepoint tracing
-│       └── syscall_tracer.rs  # raw tracepoint syscall tracking
-├── shared/                # Shared types, wire protocol (bincode + base64), utilities
-├── aggregator/            # Aggregation service
-│   ├── src/
-│   │   ├── server/        # gRPC + HTTP servers
-│   │   ├── alerts.rs      # Alert engine (rules, evaluation, history)
-│   │   ├── aggregate.rs   # Batch aggregation logic
-│   │   ├── buffer.rs      # In-memory ring buffer
-│   │   ├── export.rs      # JSON + collapsed-stack export
-│   │   ├── storage/       # ClickHouse persistence
-│   │   └── metrics.rs     # Prometheus metrics
-│   └── proto/             # gRPC protobuf definitions
-├── cli/                   # CLI client (query, aggregate, diff)
-├── wasm-runtime/          # WASM filter runtime (wasmtime 16)
-├── gpu-profiler/          # GPU profiling (CUDA/CUPTI, work in progress)
-├── ui/                    # React web dashboard (Vite + Tailwind + shadcn/ui)
-├── docs-site/             # Docusaurus documentation site
-├── deploy/k8s/            # Kubernetes manifests (Namespace, DaemonSet, Deployment)
-├── scripts/               # Setup and install scripts
-├── .github/workflows/     # CI/CD (GitHub Actions)
-├── docker-compose.yml     # Full-stack Docker setup
-├── Dockerfile.agent       # Multi-stage agent build
-└── Dockerfile.aggregator  # Multi-stage aggregator build
-```
 
 ## Documentation
 

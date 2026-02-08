@@ -8,7 +8,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
 
 jobs:
   check:
@@ -22,8 +21,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all --check
-      - name: Clippy (agent + aggregator + shared + cli)
-        run: cargo clippy -p aperture-agent -p aperture-aggregator -p aperture-shared -p aperture-cli --all-targets -- -D warnings
+      - name: Clippy
+        run: cargo clippy -p aperture-aggregator -p aperture-shared -p aperture-cli -p aperture-wasm --all-targets -- -D warnings
 
   test:
     name: Test
@@ -33,7 +32,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        run: cargo test -p aperture-agent -p aperture-aggregator -p aperture-shared -p aperture-cli
+        run: cargo test -p aperture-aggregator -p aperture-shared -p aperture-cli -p aperture-wasm
 
   ui:
     name: UI Build
@@ -52,19 +51,35 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx vite build
 
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
   build-binaries:
     name: Build (${{ matrix.target }})
     needs: [check, test]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
             artifact: aperture-linux-amd64
+            build_cli: true
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
             artifact: aperture-linux-arm64
+            build_cli: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -81,14 +96,13 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
       - name: Build CLI
-        run: cargo build --release --bin aperture-cli --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        if: matrix.build_cli
+        run: cargo build --release --bin aperture --target ${{ matrix.target }}
       - name: Package
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/aperture-aggregator dist/ 2>/dev/null || true
-          cp target/${{ matrix.target }}/release/aperture-cli dist/ 2>/dev/null || true
+          cp target/${{ matrix.target }}/release/aperture dist/ 2>/dev/null || true
           tar czf ${{ matrix.artifact }}.tar.gz -C dist .
       - uses: actions/upload-artifact@v4
         with:

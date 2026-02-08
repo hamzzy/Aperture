@@ -79,22 +79,40 @@ cargo install bpf-linker
 cd ui && npm install
 ```
 
-## Project Layout
+## Repository Structure
 
-```
+```text
 aperture/
-├── agent/           # Userspace agent — loads eBPF, collects events, resolves symbols
-├── agent-ebpf/      # eBPF programs (no_std, target: bpfel-unknown-none)
-├── shared/          # Shared types between agent and aggregator (wire protocol, events)
-├── aggregator/      # Central service — gRPC + HTTP, buffer, storage, alerts, export
-├── cli/             # CLI client for querying the aggregator
-├── wasm-runtime/    # WASM event filter runtime (wasmtime)
-├── gpu-profiler/    # GPU profiling (CUDA/CUPTI, work in progress)
-├── ui/              # React web dashboard (Vite + Tailwind + shadcn/ui)
-├── docs-site/       # Docusaurus documentation site
-├── deploy/k8s/      # Kubernetes manifests
-└── scripts/         # Setup and install scripts
+├── agent/                 # Userspace profiling agent (loads eBPF, resolves symbols)
+├── agent-ebpf/            # eBPF programs (no_std, bpfel-unknown-none target)
+│   └── src/
+│       ├── cpu_profiler.rs    # perf_event CPU sampling
+│       ├── lock_profiler.rs   # futex tracepoint tracing
+│       └── syscall_tracer.rs  # raw tracepoint syscall tracking
+├── shared/                # Shared types, wire protocol (bincode + base64), utilities
+├── aggregator/            # Aggregation service
+│   ├── src/
+│   │   ├── server/        # gRPC + HTTP servers
+│   │   ├── alerts.rs      # Alert engine (rules, evaluation, history)
+│   │   ├── aggregate.rs   # Batch aggregation logic
+│   │   ├── buffer.rs      # In-memory ring buffer
+│   │   ├── export.rs      # JSON + collapsed-stack export
+│   │   ├── storage/       # ClickHouse persistence
+│   │   └── metrics.rs     # Prometheus metrics
+│   └── proto/             # gRPC protobuf definitions
+├── cli/                   # CLI client (query, aggregate, diff)
+├── wasm-runtime/          # WASM filter runtime (wasmtime 16)
+├── gpu-profiler/          # GPU profiling (CUDA/CUPTI, work in progress)
+├── ui/                    # React web dashboard (Vite + Tailwind + shadcn/ui)
+├── docs-site/             # Docusaurus documentation site
+├── deploy/k8s/            # Kubernetes manifests (Namespace, DaemonSet, Deployment)
+├── scripts/               # Setup and install scripts
+├── .github/workflows/     # CI/CD (GitHub Actions)
+├── docker-compose.yml     # Full-stack Docker setup
+├── Dockerfile.agent       # Multi-stage agent build
+└── Dockerfile.aggregator  # Multi-stage aggregator build
 ```
+
 
 ### Crate dependency graph
 

@@ -13,16 +13,16 @@ env:
 jobs:
   build:
     name: Build (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
             artifact: aperture-linux-amd64
+            build_cli: true
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
             artifact: aperture-linux-arm64
+            build_cli: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -34,17 +34,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Build release binaries
-        run: |
-          cargo build --release --bin aperture-aggregator --target ${{ matrix.target }} --features clickhouse-storage
-          cargo build --release --bin aperture-cli --target ${{ matrix.target }}
+      - name: Build aggregator
+        run: cargo build --release --bin aperture-aggregator --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      - name: Build CLI
+        if: matrix.build_cli
+        run: cargo build --release --bin aperture --target ${{ matrix.target }}
       - name: Package
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/aperture-aggregator dist/ 2>/dev/null || true
-          cp target/${{ matrix.target }}/release/aperture-cli dist/ 2>/dev/null || true
+          cp target/${{ matrix.target }}/release/aperture dist/ 2>/dev/null || true
           tar czf ${{ matrix.artifact }}.tar.gz -C dist .
       - uses: actions/upload-artifact@v4
         with:

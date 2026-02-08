@@ -89,7 +89,7 @@ impl WasmRuntime {
 
         Ok(WasmFilter {
             store,
-            instance: instance,
+            instance,
             filter_fn,
             memory,
         })

@@ -51,6 +51,7 @@ impl AggregatorService {
         AggregatorServer::new(self)
     }
 
+    #[allow(clippy::result_large_err)]
     fn check_auth<T>(&self, request: &Request<T>) -> Result<(), Status> {
         let Some(ref expected) = self.auth_token else {
             return Ok(());
