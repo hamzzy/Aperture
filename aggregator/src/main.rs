@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use aperture_aggregator::{
     buffer::InMemoryBuffer,
     config::{AggregatorConfig, StorageConfig},
-    server::{auth, grpc},
+    server::grpc,
     storage::BatchStore,
 };
 use std::sync::Arc;
@@ -81,6 +81,8 @@ async fn main() -> Result<()> {
     #[cfg(not(feature = "clickhouse-storage"))]
     let store_handle: Option<Arc<dyn BatchStore>> = None;
 
+    let service = service.with_auth_token(config.auth_token.clone());
+
     let (_, health_svc) = tonic_health::server::health_reporter();
     let addr = config
         .listen_addr
@@ -104,25 +106,16 @@ async fn main() -> Result<()> {
         }
     });
 
-    let result = if let Some(token) = &config.auth_token {
-        let interceptor = auth::make_auth_interceptor(Some(token.clone()));
-        Server::builder()
-            .add_service(health_svc)
-            .add_service(grpc::GrpcAggregatorServer::with_interceptor(service, interceptor))
-            .serve_with_shutdown(addr, shutdown_signal())
-            .await
-    } else {
-        let svc = grpc::GrpcAggregatorServer::new(service)
-            .max_decoding_message_size(config.max_message_size)
-            .max_encoding_message_size(config.max_message_size)
-            .accept_compressed(CompressionEncoding::Gzip)
-            .send_compressed(CompressionEncoding::Gzip);
-        Server::builder()
-            .add_service(health_svc)
-            .add_service(svc)
-            .serve_with_shutdown(addr, shutdown_signal())
-            .await
-    };
+    let grpc_svc = grpc::GrpcAggregatorServer::new(service)
+        .max_decoding_message_size(config.max_message_size)
+        .max_encoding_message_size(config.max_message_size)
+        .accept_compressed(CompressionEncoding::Gzip)
+        .send_compressed(CompressionEncoding::Gzip);
+    let result = Server::builder()
+        .add_service(health_svc)
+        .add_service(grpc_svc)
+        .serve_with_shutdown(addr, shutdown_signal())
+        .await;
     result.context("gRPC server error")?;
 
     admin_handle.abort();

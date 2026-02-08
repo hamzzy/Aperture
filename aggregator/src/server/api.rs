@@ -3,6 +3,7 @@
 
 use crate::aggregate;
 use crate::buffer::InMemoryBuffer;
+use crate::MAX_AGGREGATE_BATCH_LIMIT;
 use crate::storage::BatchStore;
 use aperture_shared::types::diff;
 use aperture_shared::types::profile::{LockProfile, Profile, SyscallProfile};
@@ -168,7 +169,7 @@ pub async fn handle_api(
             }
         };
         let agent_filter = api_req.agent_id.as_deref().and_then(|s| if s.is_empty() { None } else { Some(s) });
-        let limit = api_req.limit.unwrap_or(1000);
+        let limit = api_req.limit.unwrap_or(500).min(MAX_AGGREGATE_BATCH_LIMIT);
         let payloads = match store
             .fetch_payload_strings(
                 agent_filter,
@@ -185,18 +186,23 @@ pub async fn handle_api(
                 return Ok(res);
             }
         };
-        let mut result = match aggregate::aggregate_batches(&payloads) {
-            Ok(r) => r,
+        let out = match aggregate::aggregate_batches(&payloads) {
+            Ok(o) => o,
             Err(e) => {
                 let body = serde_json::json!({ "error": e.to_string() }).to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
                 return Ok(res);
             }
         };
+        let mut result = out.result;
         let event_type = api_req.event_type.as_deref().unwrap_or("");
         aggregate::filter_by_type(&mut result, event_type);
         let json = result.to_json();
-        let body = serde_json::to_string(&json).unwrap();
+        let mut body_value = serde_json::to_value(&json).unwrap_or_default();
+        if let Some(obj) = body_value.as_object_mut() {
+            obj.insert("skipped_batches".to_string(), serde_json::json!(out.skipped_batches));
+        }
+        let body = body_value.to_string();
         let res = add_cors_headers(json_response(&body, StatusCode::OK));
         return Ok(res);
     }
@@ -223,7 +229,7 @@ pub async fn handle_api(
                 )));
             }
         };
-        let limit = api_req.limit.unwrap_or(1000);
+        let limit = api_req.limit.unwrap_or(500).min(MAX_AGGREGATE_BATCH_LIMIT);
         let baseline_agent = api_req.baseline_agent_id.as_deref().and_then(|s| if s.is_empty() { None } else { Some(s) });
         let comparison_agent = api_req.comparison_agent_id.as_deref().and_then(|s| if s.is_empty() { None } else { Some(s) });
         let baseline_payloads = match store
@@ -258,22 +264,24 @@ pub async fn handle_api(
                 return Ok(res);
             }
         };
-        let baseline = match aggregate::aggregate_batches(&baseline_payloads) {
-            Ok(r) => r,
+        let baseline_out = match aggregate::aggregate_batches(&baseline_payloads) {
+            Ok(o) => o,
             Err(e) => {
                 let body = serde_json::json!({ "result_json": "", "error": e.to_string() }).to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
                 return Ok(res);
             }
         };
-        let comparison = match aggregate::aggregate_batches(&comparison_payloads) {
-            Ok(r) => r,
+        let comparison_out = match aggregate::aggregate_batches(&comparison_payloads) {
+            Ok(o) => o,
             Err(e) => {
                 let body = serde_json::json!({ "result_json": "", "error": e.to_string() }).to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
                 return Ok(res);
             }
         };
+        let baseline = baseline_out.result;
+        let comparison = comparison_out.result;
         let event_type = api_req.event_type.as_deref().unwrap_or("cpu");
         let result_json = match event_type {
             "cpu" => {

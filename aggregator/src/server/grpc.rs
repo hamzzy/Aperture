@@ -25,6 +25,7 @@ pub use proto::aggregator_server::AggregatorServer as GrpcAggregatorServer;
 pub struct AggregatorService {
     buffer: Arc<InMemoryBuffer>,
     batch_store: Option<Arc<dyn BatchStore>>,
+    auth_token: Option<std::sync::Arc<str>>,
 }
 
 impl AggregatorService {
@@ -32,6 +33,7 @@ impl AggregatorService {
         Self {
             buffer,
             batch_store: None,
+            auth_token: None,
         }
     }
 
@@ -40,14 +42,49 @@ impl AggregatorService {
         self
     }
 
+    pub fn with_auth_token(mut self, token: Option<String>) -> Self {
+        self.auth_token = token.map(|s| s.into());
+        self
+    }
+
     pub fn into_server(self) -> AggregatorServer<Self> {
         AggregatorServer::new(self)
+    }
+
+    fn check_auth<T>(&self, request: &Request<T>) -> Result<(), Status> {
+        let Some(ref expected) = self.auth_token else {
+            return Ok(());
+        };
+        match request.metadata().get("authorization") {
+            Some(val) => {
+                let val_str = val.to_str().map_err(|_| {
+                    crate::audit::grpc_auth_failure("invalid authorization header encoding");
+                    Status::unauthenticated("Invalid authorization header encoding")
+                })?;
+                let token = val_str.strip_prefix("Bearer ").ok_or_else(|| {
+                    crate::audit::grpc_auth_failure("missing Bearer prefix");
+                    Status::unauthenticated("Missing Bearer prefix")
+                })?;
+                if token == expected.as_ref() {
+                    crate::audit::grpc_auth_success();
+                    Ok(())
+                } else {
+                    crate::audit::grpc_auth_failure("invalid token");
+                    Err(Status::unauthenticated("Invalid token"))
+                }
+            }
+            None => {
+                crate::audit::grpc_auth_failure("missing authorization header");
+                Err(Status::unauthenticated("Missing authorization header"))
+            }
+        }
     }
 }
 
 #[tonic::async_trait]
 impl Aggregator for AggregatorService {
     async fn push(&self, request: Request<PushRequest>) -> Result<Response<PushResponse>, Status> {
+        self.check_auth(&request)?;
         let start = Instant::now();
         let req = request.into_inner();
         let agent_id = if req.agent_id.is_empty() {
@@ -110,6 +147,7 @@ impl Aggregator for AggregatorService {
         &self,
         request: Request<QueryRequest>,
     ) -> Result<Response<QueryResponse>, Status> {
+        self.check_auth(&request)?;
         let req = request.into_inner();
         let agent_filter = req
             .agent_id
@@ -144,6 +182,7 @@ impl Aggregator for AggregatorService {
         &self,
         request: Request<QueryStorageRequest>,
     ) -> Result<Response<QueryResponse>, Status> {
+        self.check_auth(&request)?;
         let req = request.into_inner();
         let agent_filter = req
             .agent_id
@@ -185,12 +224,14 @@ impl Aggregator for AggregatorService {
         &self,
         request: Request<AggregateRequest>,
     ) -> Result<Response<AggregateResponse>, Status> {
+        self.check_auth(&request)?;
         let req = request.into_inner();
         let agent_filter = req
             .agent_id
             .as_deref()
             .and_then(|s| if s.is_empty() { None } else { Some(s) });
-        let limit = if req.limit == 0 { 1000 } else { req.limit };
+        let limit = (if req.limit == 0 { 500 } else { req.limit })
+            .min(crate::MAX_AGGREGATE_BATCH_LIMIT);
 
         let payloads = match &self.batch_store {
             Some(store) => store
@@ -206,8 +247,8 @@ impl Aggregator for AggregatorService {
             }
         };
 
-        let mut result = match crate::aggregate::aggregate_batches(&payloads) {
-            Ok(r) => r,
+        let out = match crate::aggregate::aggregate_batches(&payloads) {
+            Ok(o) => o,
             Err(e) => {
                 return Ok(Response::new(AggregateResponse {
                     result_json: String::new(),
@@ -217,6 +258,7 @@ impl Aggregator for AggregatorService {
             }
         };
 
+        let mut result = out.result;
         crate::aggregate::filter_by_type(&mut result, &req.event_type);
 
         let json_view = result.to_json();
@@ -225,7 +267,11 @@ impl Aggregator for AggregatorService {
         Ok(Response::new(AggregateResponse {
             total_events: result.total_events,
             result_json: json,
-            error: String::new(),
+            error: if out.skipped_batches > 0 {
+                format!("{} batches skipped (invalid/corrupt data)", out.skipped_batches)
+            } else {
+                String::new()
+            },
         }))
     }
 
@@ -233,8 +279,10 @@ impl Aggregator for AggregatorService {
         &self,
         request: Request<DiffRequest>,
     ) -> Result<Response<DiffResponse>, Status> {
+        self.check_auth(&request)?;
         let req = request.into_inner();
-        let limit = if req.limit == 0 { 1000 } else { req.limit };
+        let limit = (if req.limit == 0 { 500 } else { req.limit })
+            .min(crate::MAX_AGGREGATE_BATCH_LIMIT);
 
         let store = match &self.batch_store {
             Some(s) => s,
@@ -260,8 +308,9 @@ impl Aggregator for AggregatorService {
             .fetch_payload_strings(baseline_agent, req.baseline_start_ns, req.baseline_end_ns, limit)
             .await
             .map_err(Status::internal)?;
-        let baseline = crate::aggregate::aggregate_batches(&baseline_payloads)
+        let baseline_out = crate::aggregate::aggregate_batches(&baseline_payloads)
             .map_err(|e| Status::internal(format!("baseline aggregation: {}", e)))?;
+        let baseline = baseline_out.result;
 
         // Fetch + aggregate comparison
         let comparison_payloads = store
@@ -273,8 +322,9 @@ impl Aggregator for AggregatorService {
             )
             .await
             .map_err(Status::internal)?;
-        let comparison = crate::aggregate::aggregate_batches(&comparison_payloads)
+        let comparison_out = crate::aggregate::aggregate_batches(&comparison_payloads)
             .map_err(|e| Status::internal(format!("comparison aggregation: {}", e)))?;
+        let comparison = comparison_out.result;
 
         use aperture_shared::types::diff;
         use aperture_shared::types::profile::{LockProfile, Profile, SyscallProfile};

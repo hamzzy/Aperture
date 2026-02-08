@@ -2,7 +2,7 @@
 //!
 //! Deserializes stored payloads and merges events into aggregated profile types.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use aperture_shared::protocol::wire::Message;
 use aperture_shared::types::events::ProfileEvent;
 use aperture_shared::types::profile::{LockProfile, Profile, Stack, SyscallProfile};
@@ -119,21 +119,41 @@ impl AggregateResult {
     }
 }
 
+/// Result of aggregation plus count of batches skipped due to decode errors.
+pub struct AggregateBatchesResult {
+    pub result: AggregateResult,
+    pub skipped_batches: u32,
+}
+
 /// Deserialize base64-encoded payloads and aggregate all events by type.
+/// Invalid or corrupt payloads are skipped; the returned result includes only valid batches.
 ///
 /// Each payload is a base64-encoded bincode `Message` containing `Vec<ProfileEvent>`.
 /// Events are routed to the appropriate profile builder based on their variant.
-pub fn aggregate_batches(payloads: &[String]) -> Result<AggregateResult> {
+pub fn aggregate_batches(payloads: &[String]) -> Result<AggregateBatchesResult> {
     let mut cpu: Option<Profile> = None;
     let mut lock: Option<LockProfile> = None;
     let mut syscall: Option<SyscallProfile> = None;
     let mut total_events: u64 = 0;
+    let mut skipped_batches: u32 = 0;
 
     for payload_b64 in payloads {
-        let bytes = BASE64
-            .decode(payload_b64)
-            .context("base64 decode payload")?;
-        let msg = Message::from_bytes(&bytes).context("bincode decode message")?;
+        let bytes = match BASE64.decode(payload_b64) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!("base64 decode payload: {}", e);
+                skipped_batches += 1;
+                continue;
+            }
+        };
+        let msg = match Message::from_bytes(&bytes) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("bincode decode message (schema/version mismatch or corrupt): {}", e);
+                skipped_batches += 1;
+                continue;
+            }
+        };
 
         for event in msg.events {
             total_events += 1;
@@ -207,11 +227,14 @@ pub fn aggregate_batches(payloads: &[String]) -> Result<AggregateResult> {
         }
     }
 
-    Ok(AggregateResult {
-        cpu,
-        lock,
-        syscall,
-        total_events,
+    Ok(AggregateBatchesResult {
+        result: AggregateResult {
+            cpu,
+            lock,
+            syscall,
+            total_events,
+        },
+        skipped_batches,
     })
 }
 
@@ -270,7 +293,9 @@ mod tests {
             cpu(2000, vec![0x1000, 0x2000], vec![]),
             cpu(3000, vec![0x3000], vec![]),
         ]);
-        let result = aggregate_batches(&[payload]).unwrap();
+        let out = aggregate_batches(&[payload]).unwrap();
+        assert_eq!(out.skipped_batches, 0);
+        let result = out.result;
         assert_eq!(result.total_events, 3);
         let cpu = result.cpu.unwrap();
         assert_eq!(cpu.total_samples, 3);
@@ -289,7 +314,8 @@ mod tests {
             }),
             lock_ev(3000, 0x1000, 500, vec![0x4000]),
         ]);
-        let result = aggregate_batches(&[payload]).unwrap();
+        let out = aggregate_batches(&[payload]).unwrap();
+        let result = out.result;
         assert_eq!(result.total_events, 3);
         assert!(result.cpu.is_some());
         assert!(result.lock.is_some());
@@ -300,7 +326,8 @@ mod tests {
     fn test_aggregate_multiple_batches() {
         let p1 = make_payload(vec![cpu(1000, vec![0x1000], vec![])]);
         let p2 = make_payload(vec![cpu(2000, vec![0x1000], vec![])]);
-        let result = aggregate_batches(&[p1, p2]).unwrap();
+        let out = aggregate_batches(&[p1, p2]).unwrap();
+        let result = out.result;
         assert_eq!(result.total_events, 2);
         let cpu = result.cpu.unwrap();
         assert_eq!(cpu.total_samples, 2);
@@ -309,7 +336,8 @@ mod tests {
 
     #[test]
     fn test_aggregate_empty() {
-        let result = aggregate_batches(&[]).unwrap();
+        let out = aggregate_batches(&[]).unwrap();
+        let result = out.result;
         assert_eq!(result.total_events, 0);
         assert!(result.cpu.is_none());
         assert!(result.lock.is_none());
@@ -325,10 +353,10 @@ mod tests {
                 duration_ns: 100, return_value: 0, comm: "test".to_string(),
             }),
         ]);
-        let mut result = aggregate_batches(&[payload]).unwrap();
-        filter_by_type(&mut result, "cpu");
-        assert!(result.cpu.is_some());
-        assert!(result.syscall.is_none());
+        let mut out = aggregate_batches(&[payload]).unwrap();
+        filter_by_type(&mut out.result, "cpu");
+        assert!(out.result.cpu.is_some());
+        assert!(out.result.syscall.is_none());
     }
 
     #[test]
@@ -341,8 +369,8 @@ mod tests {
             user_stack_symbols: vec![Some("main".to_string()), Some("compute".to_string())],
             kernel_stack_symbols: vec![],
         })]);
-        let result = aggregate_batches(&[payload]).unwrap();
-        let cpu = result.cpu.unwrap();
+        let out = aggregate_batches(&[payload]).unwrap();
+        let cpu = out.result.cpu.unwrap();
         let (stack, _) = cpu.samples.iter().next().unwrap();
         assert_eq!(stack.frames[0].function.as_deref(), Some("main"));
         assert_eq!(stack.frames[1].function.as_deref(), Some("compute"));

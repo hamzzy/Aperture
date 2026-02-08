@@ -183,7 +183,10 @@ impl ClickHouseStore {
                             }
                             Err(e) => {
                                 crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["error"]).inc();
-                                tracing::warn!("Timer flush failed ({} rows lost): {}", count, e);
+                                tracing::warn!("Timer flush failed ({} rows), re-queuing: {:#}", count, e);
+                                let mut p = pending.lock().await;
+                                p.extend(rows);
+                                crate::metrics::CH_PENDING_ROWS.set(p.len() as f64);
                             }
                         }
                     }
@@ -198,7 +201,7 @@ impl ClickHouseStore {
                             let start = Instant::now();
                             if let Err(e) = Self::flush_rows(&client, &table, &rows).await {
                                 crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["error"]).inc();
-                                tracing::warn!("Shutdown flush failed ({} rows lost): {}", count, e);
+                                tracing::warn!("Shutdown flush failed ({} rows lost): {:#}", count, e);
                             } else {
                                 crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["ok"]).inc();
                                 crate::metrics::CH_FLUSH_ROWS.inc_by(count as f64);

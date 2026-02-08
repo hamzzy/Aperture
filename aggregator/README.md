@@ -46,6 +46,20 @@ export APERTURE_CLICKHOUSE_DATABASE=aperture
 - **Query**: in-memory buffer (unchanged).
 - **QueryStorage**: time-range query against ClickHouse (`time_start_ns`, `time_end_ns`, `agent_id`, `limit`). Use a gRPC client (e.g. grpcurl) or add a CLI command.
 
+### Wiping ClickHouse for a fresh start
+
+If you have old or incompatible data (e.g. after a schema/crate change), drop the table or database and let the aggregator recreate it on next push:
+
+```bash
+# With ClickHouse in Docker (container name aperture-clickhouse, database aperture)
+docker exec -it aperture-clickhouse clickhouse-client --password e2etest --query "DROP TABLE IF EXISTS aperture.aperture_batches"
+
+# Or drop the whole database
+docker exec -it aperture-clickhouse clickhouse-client --password e2etest --query "DROP DATABASE IF EXISTS aperture"
+```
+
+Restart the aggregator (and optionally the agent) so new pushes use the current schema.
+
 ## Planned
 
 - ScyllaDB backend, TLS, Docker / Kubernetes manifests

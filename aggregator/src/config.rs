@@ -35,7 +35,7 @@ impl Default for AggregatorConfig {
         let max_message_mb: usize = std::env::var("APERTURE_MAX_MESSAGE_SIZE_MB")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(16);
+            .unwrap_or(32);
 
         Self {
             listen_addr: std::env::var("APERTURE_AGGREGATOR_LISTEN")

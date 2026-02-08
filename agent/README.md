@@ -1,5 +1,7 @@
 # eBPF Profiler Agent
 
+**Platform: Linux only.** The agent loads kernel eBPF programs (PerfEventArray, etc.) and uses `perf_event_open`; these are not available on macOS or Windows. Run the agent on a Linux host, VM (e.g. OrbStack), or container. The aggregator and Phase 8 Web UI can run on any OS.
+
 The profiling agent is responsible for:
 
 1. Loading and managing eBPF programs

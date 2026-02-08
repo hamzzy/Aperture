@@ -33,9 +33,15 @@ impl InMemoryBuffer {
     }
 
     /// Append a batch. Drops oldest if at capacity.
+    /// If the payload fails to decode (schema/version mismatch), we still store it with event_count 0
+    /// so data is not lost and the agent can keep pushing; aggregation will skip invalid payloads.
     pub fn push(&self, agent_id: String, sequence: u64, payload: Vec<u8>) -> Result<(), String> {
-        let message = Message::from_bytes(&payload).map_err(|e| e.to_string())?;
-        let event_count = message.events.len() as u64;
+        let event_count = Message::from_bytes(&payload)
+            .map(|m| m.events.len() as u64)
+            .unwrap_or_else(|e| {
+                tracing::warn!("Push payload decode failed (schema/version mismatch?): {} — storing anyway with event_count 0", e);
+                0
+            });
         let received_at_ns = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()

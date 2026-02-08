@@ -35,6 +35,26 @@ fn agent_id() -> String {
         .unwrap_or_else(|| format!("agent-{}", std::process::id()))
 }
 
+/// Max gRPC message size for push (default 32 MiB). Must be <= server limit (APERTURE_MAX_MESSAGE_SIZE_MB).
+fn max_message_size_bytes() -> usize {
+    std::env::var("APERTURE_MAX_MESSAGE_SIZE_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(32)
+        .saturating_mul(1024 * 1024)
+}
+
+/// When the server returns "message length too large", the agent splits the batch and retries (no pre-size check).
+
+/// gRPC request timeout (default 120s). Large pushes (e.g. millions of syscall events) can take a long time.
+fn grpc_timeout() -> Duration {
+    std::env::var("APERTURE_GRPC_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(120))
+}
+
 /// Connect to the aggregator with timeouts. Used for connection reuse and reconnects.
 async fn connect_aggregator(
     url: &str,
@@ -48,18 +68,20 @@ async fn connect_aggregator(
 
     let channel = Channel::from_shared(url.to_string())?
         .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(10))
+        .timeout(grpc_timeout())
         .connect()
         .await
         .context("Failed to connect to aggregator")?;
+    let max_bytes = max_message_size_bytes();
     Ok(AggregatorClient::new(channel)
+        .max_encoding_message_size(max_bytes)
+        .max_decoding_message_size(max_bytes)
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip))
 }
 
-/// Push a batch of events using an existing client. Returns Ok(Some(backpressure)) when a push
-/// was performed, Ok(None) when events were empty. On connection failure the caller should
-/// reconnect and retry.
+/// Push a single batch (payload must be within size limit). Returns Ok(Some(backpressure)) when a push
+/// was performed, Ok(None) when events were empty.
 async fn push_with_client(
     client: &mut aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient<
         tonic::transport::Channel,
@@ -100,8 +122,14 @@ async fn push_with_client(
     Ok(Some(inner.backpressure))
 }
 
+/// Returns true if the error indicates the message was too large for the server.
+fn is_message_too_large(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    msg.contains("message length too large") || msg.contains("Message too large") || msg.contains("OutOfRange")
+}
+
 /// Push a batch of events to the aggregator with retry and optional client reuse.
-/// `client` is used if Some; on connection failure it is set to None and the caller should reconnect.
+/// If the server rejects due to message size, splits the batch and retries in a loop (no recursion).
 /// Returns Ok(Some(backpressure)) when a push was performed, Ok(None) when events were empty.
 async fn push_to_aggregator(
     client: &mut Option<
@@ -119,18 +147,35 @@ async fn push_to_aggregator(
     if client.is_none() {
         *client = Some(connect_aggregator(url).await?);
     }
-    let c = client.as_mut().unwrap();
-    match push_with_client(c, agent_id, events).await {
-        Ok(b) => Ok(b),
-        Err(e) => {
-            let msg = e.to_string();
-            let is_connection_error = msg.contains("connection") || msg.contains("Connection") || msg.contains("unavailable");
-            if is_connection_error {
-                *client = None;
+    let mut queue = std::collections::VecDeque::from([events]);
+    let mut last_backpressure = None;
+    while let Some(chunk) = queue.pop_front() {
+        if chunk.is_empty() {
+            continue;
+        }
+        let c = client.as_mut().unwrap();
+        match push_with_client(c, agent_id, chunk.clone()).await {
+            Ok(b) => {
+                last_backpressure = b;
             }
-            Err(e)
+            Err(e) => {
+                if is_message_too_large(&e) && chunk.len() > 1 {
+                    let mid = chunk.len() / 2;
+                    let (first, second) = chunk.split_at(mid);
+                    queue.push_front(second.to_vec());
+                    queue.push_front(first.to_vec());
+                    continue;
+                }
+                let msg = e.to_string();
+                let is_connection_error = msg.contains("connection") || msg.contains("Connection") || msg.contains("unavailable");
+                if is_connection_error {
+                    *client = None;
+                }
+                return Err(e);
+            }
         }
     }
+    Ok(last_backpressure)
 }
 
 /// Push with up to 3 attempts (exponential backoff). Keeps `client` in scope so it can be mutated.
