@@ -10,6 +10,7 @@ use aperture_aggregator::{
     server::grpc,
 };
 use std::sync::Arc;
+use tokio::signal;
 use tonic::transport::Server;
 use tracing::info;
 
@@ -22,6 +23,30 @@ fn load_config() -> AggregatorConfig {
         config.storage = StorageConfig::ClickHouse { endpoint, database };
     }
     config
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => info!("Received Ctrl+C, shutting down"),
+        _ = terminate => info!("Received SIGTERM, shutting down"),
+    }
 }
 
 #[tokio::main]
@@ -56,9 +81,10 @@ async fn main() -> Result<()> {
 
     Server::builder()
         .add_service(service)
-        .serve(addr)
+        .serve_with_shutdown(addr, shutdown_signal())
         .await
         .context("gRPC server error")?;
 
+    info!("Aggregator shut down cleanly");
     Ok(())
 }

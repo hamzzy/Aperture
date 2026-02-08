@@ -35,6 +35,9 @@ pub struct CpuCollector {
 
     /// Sample period in nanoseconds
     sample_period_ns: u64,
+
+    /// Index of first sample not yet pushed to aggregator
+    push_cursor: usize,
 }
 
 impl CpuCollector {
@@ -44,6 +47,7 @@ impl CpuCollector {
             samples: Vec::new(),
             start_time: aperture_shared::utils::time::system_time_nanos(),
             sample_period_ns,
+            push_cursor: 0,
         }
     }
 
@@ -157,13 +161,25 @@ impl CpuCollector {
         self.samples.len()
     }
 
-    /// Events for pushing to the aggregator (Phase 5+)
+    /// All events for a final push to the aggregator (Phase 5+).
     pub fn profile_events(&self) -> Vec<ProfileEvent> {
         self.samples
             .iter()
             .cloned()
             .map(ProfileEvent::CpuSample)
             .collect()
+    }
+
+    /// Return events accumulated since the last call and advance the cursor.
+    /// Used for incremental streaming to the aggregator.
+    pub fn take_pending_events(&mut self) -> Vec<ProfileEvent> {
+        let events: Vec<ProfileEvent> = self.samples[self.push_cursor..]
+            .iter()
+            .cloned()
+            .map(ProfileEvent::CpuSample)
+            .collect();
+        self.push_cursor = self.samples.len();
+        events
     }
 }
 

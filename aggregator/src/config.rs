@@ -1,4 +1,4 @@
-//! Aggregator configuration (Phase 5+)
+//! Aggregator configuration
 
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,6 @@ pub struct AggregatorConfig {
 #[serde(tag = "type")]
 pub enum StorageConfig {
     ClickHouse { endpoint: String, database: String },
-    Scylla { endpoints: Vec<String>, keyspace: String },
     InMemory,
 }
 

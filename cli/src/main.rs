@@ -26,9 +26,14 @@ enum Commands {
     /// Run profiling on a process or system
     Profile(commands::profile::ProfileArgs),
 
-    /// Query aggregated profiling data (Phase 5+)
-    #[command(hide = true)]
+    /// Query aggregated profiling data from the aggregator
     Query(commands::query::QueryArgs),
+
+    /// Aggregate stored events into merged profiles
+    Aggregate(commands::aggregate::AggregateArgs),
+
+    /// Compare two time windows (differential profiling)
+    Diff(commands::diff::DiffArgs),
 }
 
 #[tokio::main]
@@ -41,6 +46,8 @@ async fn main() -> Result<()> {
             commands::profile::run(args).await
         }
         Commands::Query(args) => commands::query::run(args).await,
+        Commands::Aggregate(args) => commands::aggregate::run(args).await,
+        Commands::Diff(args) => commands::diff::run(args).await,
     }
 }
 

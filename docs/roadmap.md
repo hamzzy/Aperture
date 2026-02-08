@@ -141,7 +141,7 @@ This document outlines the development phases and milestones for the Aperture pr
 - Agent push client integration (follow-up)
 - Container deployment support (future)
 
-### Phase 6: Storage Integration ✅ (ClickHouse done)
+### Phase 6: Storage Integration ✅
 
 **Goal**: Persistent storage for long-term profiling data
 
@@ -149,18 +149,19 @@ This document outlines the development phases and milestones for the Aperture pr
 - [x] ClickHouse backend
   - [x] Schema: `aperture_batches` (agent_id, sequence, received_at_ms, event_count, payload base64)
   - [x] Batch insertion on Push (optional, behind `clickhouse-storage` feature)
-  - [ ] Query optimization (indexes, partitioning)
+  - [x] Query optimization (indexes, partitioning, TTL)
 - [ ] ScyllaDB backend (optional)
   - [ ] Wide-column schema
   - [ ] Time-series optimization
 - [x] Query layer
   - [x] Time-range queries (QueryStorage RPC: time_start_ns, time_end_ns, agent_id, limit)
-  - [ ] Aggregation functions
-  - [ ] Differential profiling
+  - [x] Aggregation functions (Aggregate RPC: server-side merge of events into profiles)
+  - [x] Differential profiling (Diff RPC: compare two time windows or agents)
 
 **Deliverables**:
 - ClickHouse persistent backend (feature-gated)
 - QueryStorage gRPC + env config (`APERTURE_CLICKHOUSE_ENDPOINT`, `APERTURE_CLICKHOUSE_DATABASE`)
+- Aggregate + Diff RPCs with CLI (`aperture aggregate`, `aperture diff`)
 - ScyllaDB and aggregation (future)
 
 ### Phase 7: Production Hardening

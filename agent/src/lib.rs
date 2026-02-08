@@ -15,14 +15,29 @@ pub use config::ProfileMode;
 use anyhow::{Context, Result};
 use aperture_shared::protocol::wire::Message;
 use aperture_shared::types::events::ProfileEvent;
-use tracing::{debug, info};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+use tracing::{debug, info, warn};
 
-/// Push collected events to the aggregator (Phase 5+).
+/// Global monotonic sequence counter for aggregator pushes.
+static PUSH_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+/// How often to stream pending events to the aggregator during profiling.
+const PUSH_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Generate an agent ID from the hostname (or fallback to PID).
+fn agent_id() -> String {
+    hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| format!("agent-{}", std::process::id()))
+}
+
+/// Push a batch of events to the aggregator.
 async fn push_to_aggregator(
     url: &str,
     agent_id: &str,
-    sequence: u64,
-    events: &[ProfileEvent],
+    events: Vec<ProfileEvent>,
 ) -> Result<()> {
     use aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient;
     use aperture_aggregator::server::grpc::proto::PushRequest;
@@ -31,7 +46,9 @@ async fn push_to_aggregator(
     if events.is_empty() {
         return Ok(());
     }
-    let message = Message::new(sequence, events.to_vec());
+    let count = events.len();
+    let sequence = PUSH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let message = Message::new(sequence, events);
     let payload = message.to_bytes()?;
     let mut client = AggregatorClient::<Channel>::connect(url.to_string())
         .await
@@ -46,7 +63,7 @@ async fn push_to_aggregator(
     if !inner.ok {
         anyhow::bail!("Aggregator push failed: {}", inner.error);
     }
-    info!("Pushed {} events to aggregator at {}", events.len(), url);
+    info!("Pushed {} events (seq={}) to aggregator at {}", count, sequence, url);
     Ok(())
 }
 
@@ -59,16 +76,6 @@ pub async fn run_profiler(config: Config) -> Result<()> {
         config::ProfileMode::Lock => run_lock_profiler(config).await,
         config::ProfileMode::Syscall => run_syscall_profiler(config).await,
         config::ProfileMode::All => {
-            // validating multiple modes concurrently might be tricky with eBPF resources (maps, etc)
-            // For now, let's just run them sequentially or pick one?
-            // The plan says "All->tokio::join! all three".
-            // However, they all print to stdout/logs.
-            // And they might need separate output files?
-            // Existing config has single output_path.
-            // I'll implement sequential or just error for now, or just implement CPU as fallback?
-            // The plan says "All->tokio::join! all three".
-            // But they share Config which has one output path.
-            // We should probably derive output paths like "output.lock.svg", "output.cpu.svg".
             info!("Running all profilers concurrently");
             
             // Clone config for each
@@ -174,10 +181,33 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
         }));
     }
 
-    // 5. Wait
+    // 5. Spawn streaming push task if aggregator is configured
+    let push_handle = if let Some(ref url) = config.aggregator_url {
+        let url = url.clone();
+        let agent = agent_id();
+        let coll = collector.clone();
+        Some(tokio::spawn(async move {
+            let mut interval = tokio::time::interval(PUSH_INTERVAL);
+            loop {
+                interval.tick().await;
+                let events = coll.lock().await.take_pending_events();
+                if let Err(e) = push_to_aggregator(&url, &agent, events).await {
+                    warn!("Streaming push failed: {}", e);
+                }
+            }
+        }))
+    } else {
+        None
+    };
+
+    // 6. Wait for profiling duration
     tokio::time::sleep(config.duration).await;
 
-    // 6. Cleanup — abort tasks and wait for them to drop their Arc clones
+    // 7. Cleanup — abort reader tasks and streaming push, wait for Arc cleanup
+    if let Some(h) = push_handle {
+        h.abort();
+        let _ = h.await;
+    }
     for handle in &handles {
         handle.abort();
     }
@@ -189,25 +219,29 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
     // Drop the stack_map Arc so collector is the only one left
     drop(stack_map);
 
-    let collector = Arc::try_unwrap(collector)
+    let mut collector = Arc::try_unwrap(collector)
         .map_err(|_| anyhow::anyhow!("Failed to unwrap collector Arc"))?
         .into_inner();
-    let events = collector.profile_events();
+
+    // Final push of any remaining events
+    if let Some(ref url) = config.aggregator_url {
+        let events = collector.take_pending_events();
+        if let Err(e) = push_to_aggregator(url, &agent_id(), events).await {
+            warn!("Final push failed: {}", e);
+        }
+    }
+
     let mut profile = collector.build_profile()?;
 
-    // 7. Symbolize & Output
+    // 8. Symbolize & Output
     if profile.total_samples > 0 {
         let mut resolver = SymbolResolver::new();
         resolver.symbolize_profile(&mut profile, config.target_pid)?;
         output::flamegraph::generate_flamegraph(&profile, &config.output_path)?;
-        
+
         if let Some(json_path) = &config.json_output {
             output::json::generate_json(&profile, json_path)?;
         }
-    }
-
-    if let Some(ref url) = config.aggregator_url {
-        push_to_aggregator(url, "agent", 1, &events).await?;
     }
 
     Ok(())
@@ -271,39 +305,62 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
         }));
     }
 
+    // Spawn streaming push task if aggregator is configured
+    let push_handle = if let Some(ref url) = config.aggregator_url {
+        let url = url.clone();
+        let agent = agent_id();
+        let coll = collector.clone();
+        Some(tokio::spawn(async move {
+            let mut interval = tokio::time::interval(PUSH_INTERVAL);
+            loop {
+                interval.tick().await;
+                let events = coll.lock().await.take_pending_events();
+                if let Err(e) = push_to_aggregator(&url, &agent, events).await {
+                    warn!("Streaming push failed: {}", e);
+                }
+            }
+        }))
+    } else {
+        None
+    };
 
     tokio::time::sleep(config.duration).await;
 
-    // Abort all tasks and wait for them to finish
+    // Cleanup
+    if let Some(h) = push_handle {
+        h.abort();
+        let _ = h.await;
+    }
     for handle in &handles {
         handle.abort();
     }
-    
-    // Wait for all tasks to complete
     for handle in handles {
         let _ = handle.await;
     }
-    
     profiler.stop();
 
-    let collector = Arc::try_unwrap(collector)
+    let mut collector = Arc::try_unwrap(collector)
         .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
         .into_inner();
-    let events = collector.profile_events();
+
+    // Final push of remaining events
+    if let Some(ref url) = config.aggregator_url {
+        let events = collector.take_pending_events();
+        if let Err(e) = push_to_aggregator(url, &agent_id(), events).await {
+            warn!("Final push failed: {}", e);
+        }
+    }
+
     let mut profile = collector.build_profile()?;
 
     if profile.total_events > 0 {
         let mut resolver = SymbolResolver::new();
         resolver.symbolize_lock_profile(&mut profile, config.target_pid)?;
         output::flamegraph::generate_lock_flamegraph(&profile, &config.output_path)?;
-        
+
         if let Some(json_path) = &config.json_output {
             output::json::generate_lock_json(&profile, json_path)?;
         }
-    }
-
-    if let Some(ref url) = config.aggregator_url {
-        push_to_aggregator(url, "agent", 1, &events).await?;
     }
 
     Ok(())
@@ -362,37 +419,60 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
         }));
     }
 
+    // Spawn streaming push task if aggregator is configured
+    let push_handle = if let Some(ref url) = config.aggregator_url {
+        let url = url.clone();
+        let agent = agent_id();
+        let coll = collector.clone();
+        Some(tokio::spawn(async move {
+            let mut interval = tokio::time::interval(PUSH_INTERVAL);
+            loop {
+                interval.tick().await;
+                let events = coll.lock().await.take_pending_events();
+                if let Err(e) = push_to_aggregator(&url, &agent, events).await {
+                    warn!("Streaming push failed: {}", e);
+                }
+            }
+        }))
+    } else {
+        None
+    };
 
     tokio::time::sleep(config.duration).await;
 
-    // Abort all tasks and wait for them to finish
+    // Cleanup
+    if let Some(h) = push_handle {
+        h.abort();
+        let _ = h.await;
+    }
     for handle in &handles {
         handle.abort();
     }
-    
-    // Wait for all tasks to complete
     for handle in handles {
         let _ = handle.await;
     }
-    
     tracer.stop();
 
-    let collector = Arc::try_unwrap(collector)
+    let mut collector = Arc::try_unwrap(collector)
         .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc"))?
         .into_inner();
-    let events = collector.profile_events();
+
+    // Final push of remaining events
+    if let Some(ref url) = config.aggregator_url {
+        let events = collector.take_pending_events();
+        if let Err(e) = push_to_aggregator(url, &agent_id(), events).await {
+            warn!("Final push failed: {}", e);
+        }
+    }
+
     let profile = collector.build_profile()?;
 
     if profile.total_events > 0 {
         output::histogram::generate_syscall_histogram(&profile, &config.output_path)?;
-        
+
         if let Some(json_path) = &config.json_output {
             output::json::generate_syscall_json(&profile, json_path)?;
         }
-    }
-
-    if let Some(ref url) = config.aggregator_url {
-        push_to_aggregator(url, "agent", 1, &events).await?;
     }
 
     Ok(())

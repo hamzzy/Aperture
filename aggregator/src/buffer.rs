@@ -1,4 +1,4 @@
-//! In-memory buffer for ingested profile data (Phase 5)
+//! In-memory buffer for ingested profile data
 
 use aperture_shared::protocol::wire::Message;
 use std::collections::VecDeque;
@@ -56,7 +56,6 @@ impl InMemoryBuffer {
         Ok(())
     }
 
-    /// Query recent batches, optionally filtered by agent_id. Returns at most `limit` batch infos.
     pub fn query(
         &self,
         agent_id_filter: Option<&str>,
@@ -66,7 +65,7 @@ impl InMemoryBuffer {
         let limit = limit.min(1000) as usize;
         let mut out = Vec::with_capacity(limit);
 
-        for b in batches.iter().rev().take(limit * 2) {
+        for b in batches.iter().rev() {
             if out.len() >= limit {
                 break;
             }

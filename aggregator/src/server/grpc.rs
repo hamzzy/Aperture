@@ -13,7 +13,8 @@ pub mod proto {
 
 use proto::{
     aggregator_server::{Aggregator, AggregatorServer},
-    BatchInfo, PushRequest, PushResponse, QueryRequest, QueryResponse, QueryStorageRequest,
+    AggregateRequest, AggregateResponse, BatchInfo, DiffRequest, DiffResponse, PushRequest,
+    PushResponse, QueryRequest, QueryResponse, QueryStorageRequest,
 };
 
 /// gRPC server state
@@ -159,6 +160,141 @@ impl Aggregator for AggregatorService {
             .collect();
         Ok(Response::new(QueryResponse {
             batches,
+            error: String::new(),
+        }))
+    }
+
+    async fn aggregate(
+        &self,
+        request: Request<AggregateRequest>,
+    ) -> Result<Response<AggregateResponse>, Status> {
+        let req = request.into_inner();
+        let agent_filter = req
+            .agent_id
+            .as_deref()
+            .and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let limit = if req.limit == 0 { 1000 } else { req.limit };
+
+        let payloads = match &self.batch_store {
+            Some(store) => store
+                .fetch_payload_strings(agent_filter, req.time_start_ns, req.time_end_ns, limit)
+                .await
+                .map_err(Status::internal)?,
+            None => {
+                return Ok(Response::new(AggregateResponse {
+                    result_json: String::new(),
+                    total_events: 0,
+                    error: "storage not configured (enable ClickHouse)".to_string(),
+                }))
+            }
+        };
+
+        let mut result = match crate::aggregate::aggregate_batches(&payloads) {
+            Ok(r) => r,
+            Err(e) => {
+                return Ok(Response::new(AggregateResponse {
+                    result_json: String::new(),
+                    total_events: 0,
+                    error: format!("aggregation failed: {}", e),
+                }))
+            }
+        };
+
+        crate::aggregate::filter_by_type(&mut result, &req.event_type);
+
+        let json_view = result.to_json();
+        let json =
+            serde_json::to_string(&json_view).map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(AggregateResponse {
+            total_events: result.total_events,
+            result_json: json,
+            error: String::new(),
+        }))
+    }
+
+    async fn diff(
+        &self,
+        request: Request<DiffRequest>,
+    ) -> Result<Response<DiffResponse>, Status> {
+        let req = request.into_inner();
+        let limit = if req.limit == 0 { 1000 } else { req.limit };
+
+        let store = match &self.batch_store {
+            Some(s) => s,
+            None => {
+                return Ok(Response::new(DiffResponse {
+                    result_json: String::new(),
+                    error: "storage not configured (enable ClickHouse)".to_string(),
+                }))
+            }
+        };
+
+        let baseline_agent = req
+            .baseline_agent_id
+            .as_deref()
+            .and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let comparison_agent = req
+            .comparison_agent_id
+            .as_deref()
+            .and_then(|s| if s.is_empty() { None } else { Some(s) });
+
+        // Fetch + aggregate baseline
+        let baseline_payloads = store
+            .fetch_payload_strings(baseline_agent, req.baseline_start_ns, req.baseline_end_ns, limit)
+            .await
+            .map_err(Status::internal)?;
+        let baseline = crate::aggregate::aggregate_batches(&baseline_payloads)
+            .map_err(|e| Status::internal(format!("baseline aggregation: {}", e)))?;
+
+        // Fetch + aggregate comparison
+        let comparison_payloads = store
+            .fetch_payload_strings(
+                comparison_agent,
+                req.comparison_start_ns,
+                req.comparison_end_ns,
+                limit,
+            )
+            .await
+            .map_err(Status::internal)?;
+        let comparison = crate::aggregate::aggregate_batches(&comparison_payloads)
+            .map_err(|e| Status::internal(format!("comparison aggregation: {}", e)))?;
+
+        use aperture_shared::types::diff;
+        use aperture_shared::types::profile::{LockProfile, Profile, SyscallProfile};
+
+        let json = match req.event_type.as_str() {
+            "cpu" => {
+                let b = baseline.cpu.unwrap_or_else(|| Profile::new(0, 0, 0));
+                let c = comparison.cpu.unwrap_or_else(|| Profile::new(0, 0, 0));
+                let d = diff::diff_cpu(&b, &c);
+                serde_json::to_string(&d)
+            }
+            "lock" => {
+                let b = baseline.lock.unwrap_or_else(|| LockProfile::new(0));
+                let c = comparison.lock.unwrap_or_else(|| LockProfile::new(0));
+                let d = diff::diff_lock(&b, &c);
+                serde_json::to_string(&d)
+            }
+            "syscall" => {
+                let b = baseline.syscall.unwrap_or_else(|| SyscallProfile::new(0));
+                let c = comparison.syscall.unwrap_or_else(|| SyscallProfile::new(0));
+                let d = diff::diff_syscall(&b, &c);
+                serde_json::to_string(&d)
+            }
+            other => {
+                return Ok(Response::new(DiffResponse {
+                    result_json: String::new(),
+                    error: format!(
+                        "event_type must be 'cpu', 'lock', or 'syscall', got '{}'",
+                        other
+                    ),
+                }))
+            }
+        }
+        .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(DiffResponse {
+            result_json: json,
             error: String::new(),
         }))
     }

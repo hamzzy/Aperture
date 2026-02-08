@@ -10,6 +10,10 @@ service Aggregator {
   rpc Query(QueryRequest) returns (QueryResponse);
   // Query persistent storage (Phase 6: time-range, requires ClickHouse).
   rpc QueryStorage(QueryStorageRequest) returns (QueryResponse);
+  // Aggregate events across batches into merged profiles (Phase 6).
+  rpc Aggregate(AggregateRequest) returns (AggregateResponse);
+  // Differential profiling: compare two time windows or agents (Phase 6).
+  rpc Diff(DiffRequest) returns (DiffResponse);
 }
 
 message PushRequest {
@@ -45,4 +49,40 @@ message BatchInfo {
 message QueryResponse {
   repeated BatchInfo batches = 1;
   string error = 2;  // set if query failed
+}
+
+// ── Aggregate RPC ───────────────────────────────────────────────────────────
+
+message AggregateRequest {
+  optional string agent_id = 1;
+  optional int64 time_start_ns = 2;
+  optional int64 time_end_ns = 3;
+  uint32 limit = 4;        // max batches to aggregate (default 1000)
+  string event_type = 5;   // "cpu", "lock", "syscall", or "" for all
+}
+
+message AggregateResponse {
+  string result_json = 1;  // JSON-serialized AggregateResult
+  uint64 total_events = 2;
+  string error = 3;
+}
+
+// ── Diff RPC ────────────────────────────────────────────────────────────────
+
+message DiffRequest {
+  // Baseline window
+  optional string baseline_agent_id = 1;
+  optional int64 baseline_start_ns = 2;
+  optional int64 baseline_end_ns = 3;
+  // Comparison window
+  optional string comparison_agent_id = 4;
+  optional int64 comparison_start_ns = 5;
+  optional int64 comparison_end_ns = 6;
+  string event_type = 7;   // "cpu", "lock", "syscall"
+  uint32 limit = 8;        // max batches per window (default 1000)
+}
+
+message DiffResponse {
+  string result_json = 1;  // JSON-serialized CpuDiff / SyscallDiff / LockDiff
+  string error = 2;
 }

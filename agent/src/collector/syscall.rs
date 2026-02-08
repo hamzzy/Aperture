@@ -32,6 +32,9 @@ pub struct SyscallCollector {
 
     /// Start time
     start_time: u64,
+
+    /// Index of first event not yet pushed to aggregator
+    push_cursor: usize,
 }
 
 impl SyscallCollector {
@@ -40,6 +43,7 @@ impl SyscallCollector {
         Self {
             events: Vec::new(),
             start_time: aperture_shared::utils::time::system_time_nanos(),
+            push_cursor: 0,
         }
     }
 
@@ -93,13 +97,24 @@ impl SyscallCollector {
         Ok(profile)
     }
 
-    /// Events for pushing to the aggregator (Phase 5+)
+    /// All events for a final push to the aggregator (Phase 5+).
     pub fn profile_events(&self) -> Vec<ProfileEvent> {
         self.events
             .iter()
             .cloned()
             .map(ProfileEvent::Syscall)
             .collect()
+    }
+
+    /// Return events accumulated since the last call and advance the cursor.
+    pub fn take_pending_events(&mut self) -> Vec<ProfileEvent> {
+        let events: Vec<ProfileEvent> = self.events[self.push_cursor..]
+            .iter()
+            .cloned()
+            .map(ProfileEvent::Syscall)
+            .collect();
+        self.push_cursor = self.events.len();
+        events
     }
 }
 

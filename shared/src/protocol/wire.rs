@@ -31,8 +31,16 @@ impl Message {
         Ok(bincode::serialize(self)?)
     }
 
-    /// Deserialize message from bytes (bincode)
+    /// Deserialize message from bytes (bincode), validating the protocol version.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        Ok(bincode::deserialize(bytes)?)
+        let msg: Self = bincode::deserialize(bytes)?;
+        if msg.version != PROTOCOL_VERSION {
+            anyhow::bail!(
+                "protocol version mismatch: expected {}, got {}",
+                PROTOCOL_VERSION,
+                msg.version
+            );
+        }
+        Ok(msg)
     }
 }

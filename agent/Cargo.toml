@@ -38,6 +38,7 @@ symbolic-demangle = "12.0"
 
 # System interaction
 libc = "0.2"
+hostname = "0.4"
 nix = { version = "0.27", features = ["process", "signal", "fs"] }
 
 # Flamegraph generation

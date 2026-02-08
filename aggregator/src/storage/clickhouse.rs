@@ -1,18 +1,27 @@
-//! ClickHouse storage backend (Phase 6)
+//! ClickHouse storage backend
 //!
 //! Persists profile batches for time-range queries and aggregation.
-
-//! ClickHouse storage backend (Phase 6)
-//!
-//! Persists profile batches for time-range queries and aggregation.
+//! Inserts are buffered in memory and flushed periodically for throughput.
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clickhouse::{Client, Row};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 const TABLE_NAME: &str = "aperture_batches";
-const DEFAULT_TABLE_ENGINE: &str = "MergeTree() ORDER BY (received_at_ms, agent_id, sequence)";
+
+const DEFAULT_TABLE_ENGINE: &str = "\
+MergeTree() \
+PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(received_at_ms)) \
+ORDER BY (agent_id, received_at_ms, sequence) \
+TTL toDateTime(fromUnixTimestamp64Milli(received_at_ms)) + INTERVAL 90 DAY \
+SETTINGS index_granularity = 8192";
+/// Flush when this many rows are buffered.
+const FLUSH_THRESHOLD: usize = 100;
+/// Flush at least this often.
+const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// One row in the batches table (matches ClickHouse schema).
 #[derive(Debug, Clone, Row, Serialize, Deserialize)]
@@ -27,20 +36,21 @@ pub struct BatchRow {
 }
 
 /// ClickHouse-backed persistent store for profile batches.
+/// Inserts are buffered and flushed in bulk.
 pub struct ClickHouseStore {
     client: Client,
     table: String,
+    pending: Arc<Mutex<Vec<BatchRow>>>,
 }
 
 impl ClickHouseStore {
-    /// Connect and ensure the table exists.
-    /// Uses APERTURE_CLICKHOUSE_PASSWORD env var if set (e.g. for Docker E2E).
+
     pub async fn new(endpoint: &str, database: &str) -> Result<Self> {
         let mut client = Client::default()
             .with_url(endpoint)
             .with_database(database)
             .with_option("connect_timeout", "10")
-            .with_option("request_timeout", "30");
+            .with_option("receive_timeout", "30");
         if let Ok(password) = std::env::var("APERTURE_CLICKHOUSE_PASSWORD") {
             client = client.with_user("default").with_password(password);
         }
@@ -48,9 +58,11 @@ impl ClickHouseStore {
         let store = Self {
             client,
             table: TABLE_NAME.to_string(),
+            pending: Arc::new(Mutex::new(Vec::new())),
         };
 
         store.ensure_table().await?;
+        store.spawn_flush_task();
         Ok(store)
     }
 
@@ -73,8 +85,8 @@ impl ClickHouseStore {
         Ok(())
     }
 
-    /// Insert a single batch (caller can batch multiple rows for efficiency).
-    pub async fn insert_batch(
+    /// Enqueue a row for batched insertion.
+    pub async fn enqueue_batch(
         &self,
         agent_id: &str,
         sequence: u64,
@@ -92,8 +104,69 @@ impl ClickHouseStore {
             payload: payload_b64,
         };
 
+        let mut pending = self.pending.lock().await;
+        pending.push(row);
+        let len = pending.len();
+        drop(pending);
+
+        if len >= FLUSH_THRESHOLD {
+            self.flush().await?;
+        }
+        Ok(())
+    }
+
+    /// Flush all pending rows to ClickHouse in a single insert.
+    pub async fn flush(&self) -> Result<()> {
+        let rows = {
+            let mut pending = self.pending.lock().await;
+            if pending.is_empty() {
+                return Ok(());
+            }
+            std::mem::take(&mut *pending)
+        };
+
+        let count = rows.len();
         let mut insert = self.client.insert(&self.table).context("ClickHouse insert")?;
-        insert.write(&row).await.context("Write batch row")?;
+        for row in &rows {
+            insert.write(row).await.context("Write batch row")?;
+        }
+        insert.end().await.context("Flush insert")?;
+        tracing::debug!("Flushed {} rows to ClickHouse", count);
+        Ok(())
+    }
+
+    /// Spawn a background task that flushes pending rows on a timer.
+    fn spawn_flush_task(&self) {
+        let pending = self.pending.clone();
+        let client = self.client.clone();
+        let table = self.table.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(FLUSH_INTERVAL);
+            loop {
+                interval.tick().await;
+                let rows = {
+                    let mut pending = pending.lock().await;
+                    if pending.is_empty() {
+                        continue;
+                    }
+                    std::mem::take(&mut *pending)
+                };
+                let count = rows.len();
+                match Self::flush_rows(&client, &table, &rows).await {
+                    Ok(()) => tracing::debug!("Timer flush: {} rows to ClickHouse", count),
+                    Err(e) => {
+                        tracing::warn!("Timer flush failed ({} rows lost): {}", count, e);
+                    }
+                }
+            }
+        });
+    }
+
+    async fn flush_rows(client: &Client, table: &str, rows: &[BatchRow]) -> Result<()> {
+        let mut insert = client.insert(table).context("ClickHouse insert")?;
+        for row in rows {
+            insert.write(row).await.context("Write batch row")?;
+        }
         insert.end().await.context("Flush insert")?;
         Ok(())
     }
@@ -107,6 +180,9 @@ impl ClickHouseStore {
         time_end_ns: Option<i64>,
         limit: u32,
     ) -> Result<Vec<(String, u64, u32, i64)>> {
+        // Flush pending rows first so queries see recent data.
+        let _ = self.flush().await;
+
         let limit = limit.min(10_000);
         let mut sql = format!(
             "SELECT agent_id, sequence, event_count, received_at_ms FROM {} WHERE 1=1",
@@ -155,6 +231,57 @@ impl ClickHouseStore {
         }
         Ok(out)
     }
+
+    /// Fetch raw base64 payloads for aggregation. Same filtering as fetch_batches.
+    pub async fn fetch_payloads(
+        &self,
+        agent_id_filter: Option<&str>,
+        time_start_ns: Option<i64>,
+        time_end_ns: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        let _ = self.flush().await;
+
+        let limit = limit.min(10_000);
+        let mut sql = format!(
+            "SELECT payload FROM {} WHERE 1=1",
+            self.table
+        );
+        if agent_id_filter.is_some() {
+            sql += " AND agent_id = ?";
+        }
+        if time_start_ns.is_some() {
+            sql += " AND received_at_ms >= ?";
+        }
+        if time_end_ns.is_some() {
+            sql += " AND received_at_ms <= ?";
+        }
+        sql += " ORDER BY received_at_ms ASC LIMIT ?";
+
+        let mut q = self.client.query(&sql);
+        if let Some(id) = agent_id_filter {
+            q = q.bind(id);
+        }
+        if let Some(ts) = time_start_ns {
+            q = q.bind(ts / 1_000_000);
+        }
+        if let Some(te) = time_end_ns {
+            q = q.bind(te / 1_000_000);
+        }
+        q = q.bind(limit);
+
+        #[derive(Debug, Row, Serialize, Deserialize)]
+        struct PayloadRow {
+            payload: String,
+        }
+
+        let mut cursor = q.fetch::<PayloadRow>().context("Query payloads")?;
+        let mut out = Vec::new();
+        while let Some(row) = cursor.next().await? {
+            out.push(row.payload);
+        }
+        Ok(out)
+    }
 }
 
 #[async_trait::async_trait]
@@ -167,7 +294,7 @@ impl crate::storage::BatchStore for ClickHouseStore {
         event_count: u32,
         payload: &[u8],
     ) -> Result<(), String> {
-        self.insert_batch(agent_id, sequence, received_at_ns, event_count, payload)
+        self.enqueue_batch(agent_id, sequence, received_at_ns, event_count, payload)
             .await
             .map_err(|e| e.to_string())
     }
@@ -180,6 +307,18 @@ impl crate::storage::BatchStore for ClickHouseStore {
         limit: u32,
     ) -> Result<Vec<(String, u64, u32, i64)>, String> {
         self.fetch_batches(agent_id, time_start_ns, time_end_ns, limit)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn fetch_payload_strings(
+        &self,
+        agent_id: Option<&str>,
+        time_start_ns: Option<i64>,
+        time_end_ns: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<String>, String> {
+        self.fetch_payloads(agent_id, time_start_ns, time_end_ns, limit)
             .await
             .map_err(|e| e.to_string())
     }
