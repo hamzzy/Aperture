@@ -4,6 +4,16 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { StackCount, Frame } from "@/api/types";
 
+function isHexAddress(name?: string): boolean {
+  return !!name && /^0x[0-9a-f]+$/i.test(name);
+}
+
+function parseSymbol(raw: string): { name: string; module?: string } {
+  const m = raw.match(/^(.+?)\s+\[(.+)\]$/);
+  if (m) return { name: m[1], module: m[2] };
+  return { name: raw };
+}
+
 function frameLabel(f: Frame): string {
   return f.function ?? f.module ?? `0x${f.ip.toString(16)}`;
 }
@@ -15,7 +25,8 @@ export interface FunctionRow {
   total: number;
   selfPct: number;
   totalPct: number;
-  type: "native" | "python" | "kernel" | "cuda";
+  type: "native" | "python" | "kernel" | "cuda" | "unresolved";
+  isUnresolved: boolean;
 }
 
 const typeColor: Record<string, string> = {
@@ -23,9 +34,11 @@ const typeColor: Record<string, string> = {
   python: "bg-sky-600",
   kernel: "bg-emerald-600",
   cuda: "bg-violet-600",
+  unresolved: "bg-gray-500",
 };
 
 function inferType(name: string, module: string): FunctionRow["type"] {
+  if (isHexAddress(name)) return "unresolved";
   if (module.includes("python") || module.endsWith(".py")) return "python";
   if (module.includes("cuda") || module.includes("libcuda")) return "cuda";
   if (
@@ -41,11 +54,6 @@ function inferType(name: string, module: string): FunctionRow["type"] {
   return "native";
 }
 
-/**
- * Build function rows with proper self/total metrics.
- * - self: count of stacks where this function is the top (leaf) frame
- * - total: count of stacks where this function appears anywhere
- */
 export function rowsFromStacks(
   stacks: StackCount[],
   totalSamples: number,
@@ -58,22 +66,27 @@ export function rowsFromStacks(
     const frames = stack.frames;
     if (frames.length === 0) continue;
 
-    // Self: top frame only (index 0 = leaf)
-    const topLabel = frameLabel(frames[0]);
+    const topRaw = frameLabel(frames[0]);
+    const topParsed = parseSymbol(topRaw);
+    const topLabel = topParsed.name;
     selfMap.set(topLabel, (selfMap.get(topLabel) ?? 0) + count);
     if (!moduleMap.has(topLabel)) {
-      moduleMap.set(topLabel, frames[0].module ?? frames[0].file ?? "");
+      moduleMap.set(
+        topLabel,
+        topParsed.module ?? frames[0].module ?? frames[0].file ?? "",
+      );
     }
 
-    // Total: every unique function in the stack
     const seen = new Set<string>();
     for (const f of frames) {
-      const label = frameLabel(f);
+      const raw = frameLabel(f);
+      const parsed = parseSymbol(raw);
+      const label = parsed.name;
       if (seen.has(label)) continue;
       seen.add(label);
       totalMap.set(label, (totalMap.get(label) ?? 0) + count);
       if (!moduleMap.has(label)) {
-        moduleMap.set(label, f.module ?? f.file ?? "");
+        moduleMap.set(label, parsed.module ?? f.module ?? f.file ?? "");
       }
     }
   }
@@ -81,12 +94,12 @@ export function rowsFromStacks(
   const total = totalSamples || 1;
   const rows: FunctionRow[] = [];
 
-  // Union of all function names from both maps
   const allNames = new Set([...selfMap.keys(), ...totalMap.keys()]);
   for (const name of allNames) {
     const selfCount = selfMap.get(name) ?? 0;
     const totalCount = totalMap.get(name) ?? 0;
     const mod = moduleMap.get(name) ?? "";
+    const type = inferType(name, mod);
     rows.push({
       name,
       module: mod,
@@ -94,7 +107,8 @@ export function rowsFromStacks(
       total: totalCount,
       selfPct: (selfCount / total) * 100,
       totalPct: (totalCount / total) * 100,
-      type: inferType(name, mod),
+      type,
+      isUnresolved: type === "unresolved",
     });
   }
 
@@ -139,6 +153,11 @@ export function TopFunctionsTable({
     });
   }, [rows, search, sortKey, sortAsc]);
 
+  const unresolvedCount = useMemo(
+    () => rows.filter((r) => r.isUnresolved).length,
+    [rows],
+  );
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortAsc(!sortAsc);
@@ -149,8 +168,8 @@ export function TopFunctionsTable({
   };
 
   const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return " ↕";
-    return sortAsc ? " ↑" : " ↓";
+    if (sortKey !== key) return " \u2195";
+    return sortAsc ? " \u2191" : " \u2193";
   };
 
   if (!stacks || stacks.length === 0) {
@@ -175,6 +194,11 @@ export function TopFunctionsTable({
         </div>
         <span className="text-xs text-muted-foreground">
           {filtered.length} functions
+          {unresolvedCount > 0 && (
+            <span className="text-amber-500 ml-1.5">
+              ({unresolvedCount} unresolved)
+            </span>
+          )}
         </span>
       </div>
 
@@ -247,8 +271,20 @@ export function TopFunctionsTable({
                         )}
                       />
                       <div className="min-w-0">
-                        <span className="font-mono text-foreground block truncate">
+                        <span
+                          className={cn(
+                            "font-mono block truncate",
+                            fn.isUnresolved
+                              ? "text-muted-foreground italic"
+                              : "text-foreground",
+                          )}
+                        >
                           {fn.name}
+                          {fn.isUnresolved && (
+                            <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground not-italic">
+                              unresolved
+                            </span>
+                          )}
                         </span>
                         {fn.module && (
                           <span className="block text-[10px] text-muted-foreground truncate">

@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
-import { Flame, BarChart3, GitCompare, Shield, Database, Activity } from "lucide-react";
+import { ProfileInsights } from "@/components/profiler/ProfileInsights";
+import { Flame, BarChart3, GitCompare, Shield, Database, Activity, Terminal } from "lucide-react";
 import { usePhase8 } from "@/contexts/Phase8Context";
 import { useHealthQuery, useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import { formatNs } from "@/lib/format";
@@ -229,15 +230,20 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <CpuTimelineChart title="CPU Core Usage" height={140} />
-          <CpuTimelineChart title="GPU Kernel Activity" height={140} />
-        </div>
+        <ProfileInsights data={aggregate} />
+
+        <CpuTimelineChart title="Event Throughput" height={140} batches={batches} />
 
         {/* Syscall table when syscall mode is selected */}
         {syscall && Object.keys(syscall.syscalls).length > 0 && (eventType === "syscall" || eventType === "") && (
           <div className="rounded-md border border-border bg-card p-4">
-            <h2 className="text-sm font-medium text-foreground mb-3">Syscall Profile</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-medium text-foreground">Syscall Profile</h2>
+              <Link to="/syscalls" className="text-xs text-primary hover:underline flex items-center gap-1">
+                <Terminal className="h-3 w-3" />
+                View all syscalls
+              </Link>
+            </div>
             <div className="rounded-md border border-border overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
@@ -322,6 +328,12 @@ export default function Dashboard() {
             <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground hover:bg-muted/50">
               <BarChart3 className="h-3.5 w-3.5" />
               Top Functions
+            </span>
+          </Link>
+          <Link to="/syscalls">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground hover:bg-muted/50">
+              <Terminal className="h-3.5 w-3.5" />
+              Syscalls
             </span>
           </Link>
           <Link to="/comparison">

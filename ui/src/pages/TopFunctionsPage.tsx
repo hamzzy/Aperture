@@ -3,13 +3,14 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { TopFunctionsTable } from "@/components/profiler/TopFunctionsTable";
 import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
 import { usePhase8 } from "@/contexts/Phase8Context";
-import { useAggregateQuery } from "@/api/queries";
+import { useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import type { StackCount } from "@/api/types";
 
 export default function TopFunctionsPage() {
   const phase8 = usePhase8();
   const { start, end } = phase8?.timeRange ?? { start: 0, end: 0 };
   const [eventType, setEventType] = useState<"cpu" | "lock" | "">("");
+  const batchesQuery = useBatchesQuery({ limit: 50 });
   const aggregateQuery = useAggregateQuery({
     time_start_ns: start,
     time_end_ns: end,
@@ -81,7 +82,7 @@ export default function TopFunctionsPage() {
           <p className="text-xs text-destructive">{aggregateQuery.error.message}</p>
         )}
 
-        <CpuTimelineChart height={100} />
+        <CpuTimelineChart height={100} batches={batchesQuery.data?.batches} />
         <TopFunctionsTable stacks={stacks} totalSamples={totalSamples} />
       </div>
     </AppLayout>

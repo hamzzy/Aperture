@@ -64,7 +64,8 @@ toml = "0.8"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-strip = true
+strip = false
+debug = true
 
 [profile.bench]
 inherits = "release"

@@ -4,9 +4,9 @@ import { FlamegraphViewer } from "@/components/profiler/FlamegraphViewer";
 import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Maximize2 } from "lucide-react";
+import { Search, Maximize2, AlertTriangle } from "lucide-react";
 import { usePhase8 } from "@/contexts/Phase8Context";
-import { useAggregateQuery } from "@/api/queries";
+import { useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import type { StackCount } from "@/api/types";
 
 export default function FlamegraphPage() {
@@ -20,6 +20,7 @@ export default function FlamegraphPage() {
     event_type: eventType || undefined,
     enabled: !!phase8,
   });
+  const batchesQuery = useBatchesQuery({ limit: 50 });
   const data = aggregateQuery.data;
 
   // Build stacks from whichever profile type is available
@@ -52,6 +53,20 @@ export default function FlamegraphPage() {
       activeType: "cpu" as const,
     };
   }, [data, eventType]);
+
+  const unresolvedPct = useMemo(() => {
+    if (!stacks || stacks.length === 0) return 0;
+    let totalFrames = 0;
+    let unresolvedFrames = 0;
+    for (const { stack } of stacks) {
+      for (const f of stack.frames) {
+        totalFrames++;
+        const label = f.function ?? f.module ?? `0x${f.ip.toString(16)}`;
+        if (/^0x[0-9a-f]+$/i.test(label)) unresolvedFrames++;
+      }
+    }
+    return totalFrames > 0 ? (unresolvedFrames / totalFrames) * 100 : 0;
+  }, [stacks]);
 
   const [searchRegex, setSearchRegex] = useState("");
   const error = aggregateQuery.error?.message ?? null;
@@ -100,7 +115,19 @@ export default function FlamegraphPage() {
           </p>
         )}
 
-        <CpuTimelineChart height={100} />
+        {unresolvedPct > 30 && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              {unresolvedPct.toFixed(0)}% of frames are unresolved (showing as hex addresses).
+              Run as root, ensure <code className="font-mono bg-amber-500/10 px-1 rounded">kptr_restrict=0</code>,
+              and install debug symbols.
+              See <code className="font-mono bg-amber-500/10 px-1 rounded">docs/SYMBOL-RESOLUTION.md</code>.
+            </span>
+          </div>
+        )}
+
+        <CpuTimelineChart height={100} batches={batchesQuery.data?.batches} />
 
         <div className="relative max-w-md">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

@@ -7,6 +7,7 @@ import { Phase8Provider } from "@/contexts/Phase8Context";
 import Dashboard from "./pages/Dashboard";
 import FlamegraphPage from "./pages/FlamegraphPage";
 import TopFunctionsPage from "./pages/TopFunctionsPage";
+import SyscallsPage from "./pages/SyscallsPage";
 import ComparisonPage from "./pages/ComparisonPage";
 import TimelinePage from "./pages/TimelinePage";
 import SettingsPage from "./pages/SettingsPage";
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/" element={<Dashboard />} />
           <Route path="/flamegraph" element={<FlamegraphPage />} />
           <Route path="/functions" element={<TopFunctionsPage />} />
+          <Route path="/syscalls" element={<SyscallsPage />} />
           <Route path="/comparison" element={<ComparisonPage />} />
           <Route path="/timeline" element={<TimelinePage />} />
           <Route path="/settings" element={<SettingsPage />} />

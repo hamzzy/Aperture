@@ -207,9 +207,69 @@ async fn push_to_aggregator_with_retry(
     unreachable!()
 }
 
+/// Check symbol resolution prerequisites and warn about common issues.
+fn check_symbol_prerequisites(pid: Option<i32>) {
+    // Check kptr_restrict — if non-zero, kernel symbols resolve as hex
+    match std::fs::read_to_string("/proc/sys/kernel/kptr_restrict") {
+        Ok(val) => {
+            let v = val.trim();
+            if v != "0" {
+                warn!(
+                    "kernel.kptr_restrict={} — kernel symbols will show as hex addresses. \
+                     Fix: sudo sysctl kernel.kptr_restrict=0",
+                    v
+                );
+            } else {
+                debug!("kernel.kptr_restrict=0 (kernel symbols accessible)");
+            }
+        }
+        Err(e) => {
+            debug!("Could not read /proc/sys/kernel/kptr_restrict: {}", e);
+        }
+    }
+
+    // Check /proc/kallsyms readability
+    match std::fs::read_to_string("/proc/kallsyms") {
+        Ok(content) => {
+            let has_real_addrs = content
+                .lines()
+                .take(5)
+                .any(|l| !l.starts_with("0000000000000000"));
+            if !has_real_addrs {
+                warn!(
+                    "/proc/kallsyms shows zeroed addresses — kernel symbols won't resolve. \
+                     Ensure running as root with kptr_restrict=0"
+                );
+            } else {
+                let count = content.lines().count();
+                info!("Kernel symbols available: {} entries in /proc/kallsyms", count);
+            }
+        }
+        Err(e) => warn!("Cannot read /proc/kallsyms: {} — kernel symbols unavailable", e),
+    }
+
+    // Check target process /proc/PID/maps
+    if let Some(pid) = pid {
+        let maps_path = format!("/proc/{}/maps", pid);
+        match std::fs::read_to_string(&maps_path) {
+            Ok(content) => {
+                let mappings = content.lines().count();
+                info!("Process {} maps available: {} memory mappings", pid, mappings);
+            }
+            Err(e) => warn!(
+                "Cannot read {} — userspace symbols for PID {} unavailable: {}",
+                maps_path, pid, e
+            ),
+        }
+    }
+}
+
 /// Run the profiler with the given configuration.
 pub async fn run_profiler(config: Config) -> Result<()> {
     config.validate().context("Invalid configuration")?;
+
+    // Check symbol resolution prerequisites before profiling
+    check_symbol_prerequisites(config.target_pid);
 
     match config.mode {
         config::ProfileMode::Cpu => run_cpu_profiler(config).await,

@@ -1,6 +1,23 @@
 import { useMemo, useState, useCallback, useRef, type MouseEvent } from "react";
 import type { StackCount, Frame } from "@/api/types";
 
+/* ── Symbol parsing ───────────────────────────────────────────── */
+
+/** Detect hex-only addresses like "0xffff8b5b" */
+function isHexAddress(name?: string): boolean {
+  return !!name && /^0x[0-9a-f]+$/i.test(name);
+}
+
+/**
+ * Parse "function_name [module_basename]" format produced by the agent.
+ * Falls back to treating the whole string as the name.
+ */
+function parseSymbol(raw: string): { name: string; module?: string } {
+  const m = raw.match(/^(.+?)\s+\[(.+)\]$/);
+  if (m) return { name: m[1], module: m[2] };
+  return { name: raw };
+}
+
 function frameLabel(f: Frame): string {
   return f.function ?? f.module ?? `0x${f.ip.toString(16)}`;
 }
@@ -14,10 +31,22 @@ interface FNode {
   /** Self samples (leaf-only, not passed to children) */
   self: number;
   children: Map<string, FNode>;
+  /** Module basename (parsed from "func [module]" format) */
+  module?: string;
+  /** Raw IP address */
+  ip?: number;
+  /** True if the function name is just a hex address */
+  isUnresolved: boolean;
 }
 
 function buildTree(stacks: StackCount[]): FNode {
-  const root: FNode = { label: "root", total: 0, self: 0, children: new Map() };
+  const root: FNode = {
+    label: "root",
+    total: 0,
+    self: 0,
+    children: new Map(),
+    isUnresolved: false,
+  };
   for (const { stack, count } of stacks) {
     const frames = stack.frames;
     if (frames.length === 0) continue;
@@ -26,10 +55,20 @@ function buildTree(stacks: StackCount[]): FNode {
     // Walk bottom-up (callers first)
     for (let i = frames.length - 1; i >= 0; i--) {
       const f = frames[i];
-      const key = `${f.ip}-${f.function ?? ""}`;
+      const raw = frameLabel(f);
+      const key = `${f.ip}-${raw}`;
       let child = current.children.get(key);
       if (!child) {
-        child = { label: frameLabel(f), total: 0, self: 0, children: new Map() };
+        const parsed = parseSymbol(raw);
+        child = {
+          label: parsed.name,
+          total: 0,
+          self: 0,
+          children: new Map(),
+          module: parsed.module ?? f.module ?? undefined,
+          ip: f.ip,
+          isUnresolved: isHexAddress(parsed.name),
+        };
         current.children.set(key, child);
       }
       child.total += count;
@@ -45,9 +84,7 @@ function buildTree(stacks: StackCount[]): FNode {
 const ROW_H = 22;
 
 interface Block {
-  /** Left offset as fraction 0..1 relative to zoom root */
   x: number;
-  /** Width as fraction 0..1 */
   w: number;
   depth: number;
   node: FNode;
@@ -55,13 +92,12 @@ interface Block {
 
 function layoutBlocks(root: FNode, total: number): Block[] {
   const out: Block[] = [];
-  const MIN_W = 0.002; // hide blocks < 0.2% width
+  const MIN_W = 0.002;
 
   function walk(node: FNode, x: number, depth: number) {
     const w = total > 0 ? node.total / total : 0;
     if (w < MIN_W && depth > 0) return;
     out.push({ x, w, depth, node });
-    // Sort children by total descending for stable layout
     const sorted = [...node.children.values()].sort((a, b) => b.total - a.total);
     let childX = x;
     for (const c of sorted) {
@@ -76,10 +112,9 @@ function layoutBlocks(root: FNode, total: number): Block[] {
 /* ── Color palette ────────────────────────────────────────────── */
 
 function flameColor(label: string, depth: number): string {
-  // Simple hash for deterministic color per function
   let h = 0;
   for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
-  const hue = 10 + (Math.abs(h) % 40); // warm range 10-50
+  const hue = 10 + (Math.abs(h) % 40);
   const sat = 65 + (depth % 3) * 10;
   const lit = 42 + (Math.abs(h >> 8) % 15);
   return `hsl(${hue}, ${sat}%, ${lit}%)`;
@@ -88,13 +123,14 @@ function flameColor(label: string, depth: number): string {
 function kernelColor(label: string): string {
   let h = 0;
   for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
-  const hue = 180 + (Math.abs(h) % 60); // cool range
+  const hue = 180 + (Math.abs(h) % 60);
   return `hsl(${hue}, 50%, 40%)`;
 }
 
-function getBlockColor(label: string, depth: number): string {
-  if (depth === 0) return "hsl(220, 15%, 30%)"; // root
-  // Kernel frames often start with specific prefixes
+function getBlockColor(node: FNode, depth: number): string {
+  if (depth === 0) return "hsl(220, 15%, 30%)";
+  if (node.isUnresolved) return "hsl(220, 8%, 28%)"; // grey for unresolved
+  const label = node.label;
   if (
     label.startsWith("__") ||
     label.startsWith("do_") ||
@@ -112,10 +148,14 @@ function getBlockColor(label: string, depth: number): string {
 
 interface TooltipInfo {
   label: string;
+  module?: string;
+  ip?: number;
+  isUnresolved: boolean;
   total: number;
   self: number;
-  totalPct: string;
-  selfPct: string;
+  totalPct: number;
+  selfPct: number;
+  depth: number;
   x: number;
   y: number;
 }
@@ -123,23 +163,66 @@ interface TooltipInfo {
 function Tooltip({ info }: { info: TooltipInfo }) {
   return (
     <div
-      className="fixed z-50 pointer-events-none px-3 py-2 rounded-md shadow-lg text-xs border border-border bg-popover text-popover-foreground"
+      className="fixed z-50 pointer-events-none px-3 py-2.5 rounded-md shadow-lg text-xs border border-border bg-popover text-popover-foreground"
       style={{
-        left: info.x + 12,
-        top: info.y - 10,
-        maxWidth: 420,
+        left: info.x + 14,
+        top: info.y - 12,
+        maxWidth: 480,
       }}
     >
-      <div className="font-mono font-medium truncate mb-1">{info.label}</div>
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-muted-foreground">
-        <span>Total:</span>
-        <span className="text-foreground font-mono">
-          {info.total.toLocaleString()} ({info.totalPct})
+      {/* Function name */}
+      <div className="flex items-center gap-2 mb-1">
+        <span className="font-mono font-medium truncate">
+          {info.label}
         </span>
-        <span>Self:</span>
-        <span className="text-foreground font-mono">
-          {info.self.toLocaleString()} ({info.selfPct})
-        </span>
+        {info.isUnresolved && (
+          <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+            unresolved
+          </span>
+        )}
+      </div>
+
+      {/* Module */}
+      {info.module && (
+        <div className="text-[10px] text-muted-foreground mb-1.5 truncate font-mono">
+          {info.module}
+        </div>
+      )}
+
+      {/* Metrics */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground w-8">Total</span>
+          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${Math.min(100, info.totalPct)}%` }}
+            />
+          </div>
+          <span className="font-mono text-foreground w-20 text-right">
+            {info.total.toLocaleString()} ({info.totalPct.toFixed(1)}%)
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground w-8">Self</span>
+          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-orange-500"
+              style={{ width: `${Math.min(100, info.selfPct)}%` }}
+            />
+          </div>
+          <span className="font-mono text-foreground w-20 text-right">
+            {info.self.toLocaleString()} ({info.selfPct.toFixed(1)}%)
+          </span>
+        </div>
+      </div>
+
+      {/* Depth */}
+      <div className="text-[10px] text-muted-foreground mt-1.5">
+        Depth {info.depth}
+        {info.ip != null && !info.isUnresolved && (
+          <span className="ml-2">IP 0x{info.ip.toString(16)}</span>
+        )}
       </div>
     </div>
   );
@@ -174,7 +257,6 @@ export function FlamegraphViewer({
   const maxDepth = blocks.length ? Math.max(...blocks.map((b) => b.depth)) : 0;
   const graphHeight = (maxDepth + 1) * ROW_H;
 
-  // Search regex compilation
   const searchRe = useMemo(() => {
     if (!searchRegex?.trim()) return null;
     try {
@@ -187,7 +269,7 @@ export function FlamegraphViewer({
   const handleClick = useCallback(
     (node: FNode) => {
       if (zoomNode === node) {
-        setZoomNode(null); // click zoomed root to unzoom
+        setZoomNode(null);
       } else if (node.children.size > 0) {
         setZoomNode(node);
       }
@@ -197,14 +279,18 @@ export function FlamegraphViewer({
 
   const handleMouseMove = useCallback(
     (e: MouseEvent, block: Block) => {
-      const pct = rootTotal > 0 ? (block.node.total / rootTotal) * 100 : 0;
+      const totalPct = rootTotal > 0 ? (block.node.total / rootTotal) * 100 : 0;
       const selfPct = rootTotal > 0 ? (block.node.self / rootTotal) * 100 : 0;
       setTooltip({
         label: block.node.label,
+        module: block.node.module,
+        ip: block.node.ip,
+        isUnresolved: block.node.isUnresolved,
         total: block.node.total,
         self: block.node.self,
-        totalPct: `${pct.toFixed(2)}%`,
-        selfPct: `${selfPct.toFixed(2)}%`,
+        totalPct,
+        selfPct,
+        depth: block.depth,
         x: e.clientX,
         y: e.clientY,
       });
@@ -225,7 +311,6 @@ export function FlamegraphViewer({
 
   return (
     <div className="space-y-2">
-      {/* Header bar */}
       <div className="rounded-md border border-border bg-card overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border text-xs text-muted-foreground">
           <span>
@@ -243,7 +328,6 @@ export function FlamegraphViewer({
           )}
         </div>
 
-        {/* Flame graph area */}
         <div
           ref={containerRef}
           className="overflow-auto relative"
@@ -268,6 +352,7 @@ export function FlamegraphViewer({
                   onMouseMove={(e) => handleMouseMove(e, b)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleClick(b.node);
+                    if (e.key === "Escape") setZoomNode(null);
                   }}
                   className="absolute box-border border-r border-b cursor-pointer transition-opacity"
                   style={{
@@ -275,14 +360,18 @@ export function FlamegraphViewer({
                     width: `${widthPct}%`,
                     top: b.depth * ROW_H,
                     height: ROW_H,
-                    backgroundColor: getBlockColor(b.node.label, b.depth),
+                    backgroundColor: getBlockColor(b.node, b.depth),
                     borderColor: "rgba(0,0,0,0.15)",
                     opacity: dimmed ? 0.3 : 1,
                   }}
                 >
                   {widthPct > 2 && (
                     <span
-                      className="block truncate px-1 text-white select-none leading-snug"
+                      className={`block truncate px-1 select-none leading-snug ${
+                        b.node.isUnresolved
+                          ? "text-white/50 italic"
+                          : "text-white"
+                      }`}
                       style={{
                         fontSize: 11,
                         lineHeight: `${ROW_H}px`,
@@ -306,7 +395,6 @@ export function FlamegraphViewer({
         </div>
       </div>
 
-      {/* Tooltip (portal-free, positioned fixed) */}
       {tooltip && <Tooltip info={tooltip} />}
     </div>
   );

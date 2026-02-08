@@ -8,6 +8,7 @@ import {
   Bell,
   Settings,
   Scan,
+  Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,6 +17,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/" },
   { icon: Flame, label: "Flamegraph", to: "/flamegraph" },
   { icon: BarChart3, label: "Top Functions", to: "/functions" },
+  { icon: Terminal, label: "Syscalls", to: "/syscalls" },
   { icon: GitCompare, label: "Comparison", to: "/comparison" },
   { icon: Cpu, label: "Timeline", to: "/timeline" },
 ];
