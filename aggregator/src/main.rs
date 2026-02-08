@@ -64,13 +64,15 @@ async fn main() -> Result<()> {
     let mut service = grpc::AggregatorService::new(buffer.clone());
 
     #[cfg(feature = "clickhouse-storage")]
-    let store_handle: Option<Arc<dyn BatchStore>> = if let StorageConfig::ClickHouse { ref endpoint, ref database } = &config.storage {
-        let store = aperture_aggregator::storage::clickhouse::ClickHouseStore::new(
-            endpoint,
-            database,
-        )
-        .await
-        .context("ClickHouse connection failed")?;
+    let store_handle: Option<Arc<dyn BatchStore>> = if let StorageConfig::ClickHouse {
+        ref endpoint,
+        ref database,
+    } = &config.storage
+    {
+        let store =
+            aperture_aggregator::storage::clickhouse::ClickHouseStore::new(endpoint, database)
+                .await
+                .context("ClickHouse connection failed")?;
         info!("ClickHouse storage enabled: {} / {}", endpoint, database);
         let store_arc = Arc::new(store);
         service = service.with_batch_store(store_arc.clone());
@@ -95,12 +97,9 @@ async fn main() -> Result<()> {
 
     let store_for_admin = store_handle.clone();
     let admin_handle = tokio::spawn(async move {
-        if let Err(e) = aperture_aggregator::server::http::serve_admin(
-            admin_addr,
-            buffer,
-            store_for_admin,
-        )
-        .await
+        if let Err(e) =
+            aperture_aggregator::server::http::serve_admin(admin_addr, buffer, store_for_admin)
+                .await
         {
             tracing::error!("Admin HTTP server error: {}", e);
         }
@@ -132,8 +131,7 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing() {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let registry = tracing_subscriber::registry().with(filter);
 
     if std::env::var("APERTURE_LOG_FORMAT").as_deref() == Ok("json") {

@@ -48,9 +48,8 @@ impl LockProfiler {
         }
 
         // Attach eBPF program to tracepoints
-        let links =
-            loader::attach_lock_profiler(&mut self.bpf, self.target_pid)
-                .context("Failed to attach lock profiler")?;
+        let links = loader::attach_lock_profiler(&mut self.bpf, self.target_pid)
+            .context("Failed to attach lock profiler")?;
 
         self.links = Some(links);
         info!("Lock profiling started successfully");

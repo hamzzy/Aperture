@@ -24,4 +24,3 @@ pub const FUTEX_CMD_MASK: u32 = !128; // ~(FUTEX_PRIVATE_FLAG | FUTEX_CLOCK_REAL
 
 /// Map sizes
 pub const MAX_TRACKED_TIDS: u32 = 16384;
-

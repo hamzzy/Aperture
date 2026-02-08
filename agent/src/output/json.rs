@@ -80,7 +80,10 @@ struct JsonLockContention<'a> {
 }
 
 /// Generate JSON output from lock profile data
-pub fn generate_lock_json(profile: &aperture_shared::types::profile::LockProfile, output_path: &str) -> Result<()> {
+pub fn generate_lock_json(
+    profile: &aperture_shared::types::profile::LockProfile,
+    output_path: &str,
+) -> Result<()> {
     info!("Generating lock profile JSON: {}", output_path);
 
     let contentions: Vec<JsonLockContention> = profile
@@ -136,7 +139,10 @@ struct JsonSyscallStats {
 }
 
 /// Generate JSON output from syscall profile data
-pub fn generate_syscall_json(profile: &aperture_shared::types::profile::SyscallProfile, output_path: &str) -> Result<()> {
+pub fn generate_syscall_json(
+    profile: &aperture_shared::types::profile::SyscallProfile,
+    output_path: &str,
+) -> Result<()> {
     info!("Generating syscall profile JSON: {}", output_path);
 
     let syscalls: Vec<JsonSyscallStats> = profile

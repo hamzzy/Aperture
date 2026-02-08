@@ -9,8 +9,8 @@ use std::fs::File;
 use std::io::BufWriter;
 use tracing::info;
 
-use std::collections::HashMap;
 use aperture_shared::types::profile::{LockProfile, Stack};
+use std::collections::HashMap;
 
 /// Generate a flamegraph from profile data
 pub fn generate_flamegraph(profile: &Profile, output_path: &str) -> Result<()> {
@@ -25,12 +25,7 @@ pub fn generate_flamegraph(profile: &Profile, output_path: &str) -> Result<()> {
 /// Generate a flamegraph from lock profile data
 pub fn generate_lock_flamegraph(profile: &LockProfile, output_path: &str) -> Result<()> {
     let stacks = profile.as_weighted_stacks();
-    generate_flamegraph_from_stacks(
-        &stacks,
-        output_path,
-        "Lock Contention Flamegraph",
-        "ns",
-    )
+    generate_flamegraph_from_stacks(&stacks, output_path, "Lock Contention Flamegraph", "ns")
 }
 
 fn generate_flamegraph_from_stacks(

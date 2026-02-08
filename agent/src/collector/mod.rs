@@ -2,5 +2,5 @@
 
 pub mod cpu;
 pub mod lock;
-pub mod syscall;
 pub mod symbols;
+pub mod syscall;

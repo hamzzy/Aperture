@@ -1,8 +1,8 @@
 use anyhow::Result;
 use aperture_agent::collector::lock::LockCollector;
 use aperture_agent::collector::syscall::SyscallCollector;
-use aperture_shared::types::events::{LockEvent, SyscallEvent};
 use aperture_agent::output::{flamegraph, histogram, json};
+use aperture_shared::types::events::{LockEvent, SyscallEvent};
 use tempfile::NamedTempFile;
 
 #[test]
@@ -29,7 +29,7 @@ fn test_lock_pipeline() -> Result<()> {
 
     // Test output generation
     flamegraph::generate_lock_flamegraph(&profile, path)?;
-    
+
     let json_path = format!("{}.json", path);
     json::generate_lock_json(&profile, &json_path)?;
 

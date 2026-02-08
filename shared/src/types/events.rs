@@ -167,14 +167,14 @@ mod tests {
         });
 
         let bytes = config.serialize(&event).unwrap();
-        
+
         // Expected layout (fixint):
         // 0-3: Tag (u32) = 2
         // 4-11: TS (u64)
         // 12-15: Pid (i32)
         // 16-19: Tid (i32)
         // 20-23: SyscallId (u32) = 198
-        
+
         assert_eq!(bytes[0..4], [2, 0, 0, 0]); // Tag 2
         assert_eq!(bytes[20..24], [198, 0, 0, 0]); // Syscall ID 198 (le)
 
@@ -186,5 +186,4 @@ mod tests {
             _ => panic!("Wrong variant"),
         }
     }
-
 }

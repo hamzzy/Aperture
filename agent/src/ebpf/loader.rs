@@ -5,8 +5,8 @@
 use anyhow::{Context, Result};
 use aya::{
     programs::{
+        perf_event::{PerfEventLinkId, PerfEventScope, PerfTypeId, SamplePolicy},
         PerfEvent,
-        perf_event::{PerfEventLinkId, PerfTypeId, PerfEventScope, SamplePolicy},
     },
     util::online_cpus,
     Ebpf,
@@ -18,8 +18,8 @@ use tracing::info;
 /// namespace-relative PIDs in eBPF programs.
 fn get_pidns_dev_ino() -> Result<(u64, u64)> {
     use std::os::unix::fs::MetadataExt;
-    let meta = std::fs::metadata("/proc/self/ns/pid")
-        .context("Failed to stat /proc/self/ns/pid")?;
+    let meta =
+        std::fs::metadata("/proc/self/ns/pid").context("Failed to stat /proc/self/ns/pid")?;
     Ok((meta.dev(), meta.ino()))
 }
 
@@ -71,7 +71,9 @@ pub fn load_cpu_profiler() -> Result<Ebpf> {
             std::path::Path::new("/usr/local/share/aperture/cpu-profiler"),
             std::path::Path::new("cpu-profiler"),
         ];
-        if let Some(path) = std::env::var_os("APERTURE_EBPF_CPU_PROFILER").map(std::path::PathBuf::from) {
+        if let Some(path) =
+            std::env::var_os("APERTURE_EBPF_CPU_PROFILER").map(std::path::PathBuf::from)
+        {
             if path.exists() {
                 info!("Loading eBPF from APERTURE_EBPF_CPU_PROFILER: {:?}", path);
                 let bpf = EbpfLoader::new()
@@ -119,7 +121,10 @@ pub fn attach_cpu_profiler(
 ) -> Result<PerfEventLinks> {
     use tracing::debug;
 
-    info!("Attaching CPU profiler as perf_event at {} Hz", sample_rate_hz);
+    info!(
+        "Attaching CPU profiler as perf_event at {} Hz",
+        sample_rate_hz
+    );
 
     debug!("Available programs:");
     for (name, program) in bpf.programs() {
@@ -133,7 +138,9 @@ pub fn attach_cpu_profiler(
         .context("Program is not a PerfEvent")?;
 
     info!("Loading program into kernel");
-    program.load().context("Failed to load perf_event program")?;
+    program
+        .load()
+        .context("Failed to load perf_event program")?;
     info!("Program loaded successfully");
 
     let mut links = PerfEventLinks::new();
@@ -203,9 +210,9 @@ mod tests {
     }
 }
 
-use aya::programs::trace_point::TracePointLinkId;
 use aya::programs::raw_trace_point::RawTracePointLinkId;
-use aya::programs::{TracePoint, RawTracePoint};
+use aya::programs::trace_point::TracePointLinkId;
+use aya::programs::{RawTracePoint, TracePoint};
 
 /// Storage for tracepoint links
 pub struct TracepointLinks {
@@ -248,7 +255,9 @@ pub fn load_lock_profiler() -> Result<Ebpf> {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("../target/bpfel-unknown-none/debug/lock-profiler");
         if path.exists() {
-            return EbpfLoader::new().load_file(&path).context("Failed to load lock profiler");
+            return EbpfLoader::new()
+                .load_file(&path)
+                .context("Failed to load lock profiler");
         }
     }
 
@@ -258,19 +267,19 @@ pub fn load_lock_profiler() -> Result<Ebpf> {
             env!("CARGO_MANIFEST_DIR"),
             "/../target/bpfel-unknown-none/release/lock-profiler"
         ));
-        EbpfLoader::new().allow_unsupported_maps().load(bpf_data).context("Failed to load lock profiler")
+        EbpfLoader::new()
+            .allow_unsupported_maps()
+            .load(bpf_data)
+            .context("Failed to load lock profiler")
     }
-    
+
     // Fallback for debug if file not found
     #[cfg(debug_assertions)]
     anyhow::bail!("Lock profiler binary not found")
 }
 
 /// Attach lock profiler
-pub fn attach_lock_profiler(
-    bpf: &mut Ebpf,
-    target_pid: Option<i32>,
-) -> Result<TracepointLinks> {
+pub fn attach_lock_profiler(bpf: &mut Ebpf, target_pid: Option<i32>) -> Result<TracepointLinks> {
     let mut links = TracepointLinks::new();
 
     // Attach sys_enter_futex
@@ -294,14 +303,18 @@ pub fn attach_lock_profiler(
     // Write PID filter AFTER programs are loaded (so map relocations work)
     let pid_value: u64 = target_pid.unwrap_or(0) as u64;
     let mut filter_map: aya::maps::Array<_, u64> = aya::maps::Array::try_from(
-        bpf.map_mut("PID_FILTER").context("Failed to get PID_FILTER map")?
+        bpf.map_mut("PID_FILTER")
+            .context("Failed to get PID_FILTER map")?,
     )?;
     filter_map.set(0, pid_value, 0)?;
     if pid_value != 0 {
         let (dev, ino) = get_pidns_dev_ino()?;
         filter_map.set(1, dev, 0)?;
         filter_map.set(2, ino, 0)?;
-        info!("Lock profiler PID filter: pid={}, ns_dev={}, ns_ino={}", pid_value, dev, ino);
+        info!(
+            "Lock profiler PID filter: pid={}, ns_dev={}, ns_ino={}",
+            pid_value, dev, ino
+        );
     } else {
         info!("Lock profiler PID filter: disabled (tracing all)");
     }
@@ -320,7 +333,9 @@ pub fn load_syscall_tracer() -> Result<Ebpf> {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("../target/bpfel-unknown-none/debug/syscall-tracer");
         if path.exists() {
-            return EbpfLoader::new().load_file(&path).context("Failed to load syscall tracer");
+            return EbpfLoader::new()
+                .load_file(&path)
+                .context("Failed to load syscall tracer");
         }
     }
 
@@ -330,7 +345,10 @@ pub fn load_syscall_tracer() -> Result<Ebpf> {
             env!("CARGO_MANIFEST_DIR"),
             "/../target/bpfel-unknown-none/release/syscall-tracer"
         ));
-        EbpfLoader::new().allow_unsupported_maps().load(bpf_data).context("Failed to load syscall tracer")
+        EbpfLoader::new()
+            .allow_unsupported_maps()
+            .load(bpf_data)
+            .context("Failed to load syscall tracer")
     }
 
     #[cfg(debug_assertions)]
@@ -365,14 +383,18 @@ pub fn attach_syscall_tracer(
     // Write PID filter AFTER programs are loaded (so map relocations work)
     let pid_value: u64 = target_pid.unwrap_or(0) as u64;
     let mut filter_map: aya::maps::Array<_, u64> = aya::maps::Array::try_from(
-        bpf.map_mut("PID_FILTER").context("Failed to get PID_FILTER map")?
+        bpf.map_mut("PID_FILTER")
+            .context("Failed to get PID_FILTER map")?,
     )?;
     filter_map.set(0, pid_value, 0)?;
     if pid_value != 0 {
         let (dev, ino) = get_pidns_dev_ino()?;
         filter_map.set(1, dev, 0)?;
         filter_map.set(2, ino, 0)?;
-        info!("Syscall tracer PID filter: pid={}, ns_dev={}, ns_ino={}", pid_value, dev, ino);
+        info!(
+            "Syscall tracer PID filter: pid={}, ns_dev={}, ns_ino={}",
+            pid_value, dev, ino
+        );
     } else {
         info!("Syscall tracer PID filter: disabled (tracing all)");
     }

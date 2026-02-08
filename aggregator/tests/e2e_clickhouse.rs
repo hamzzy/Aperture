@@ -4,9 +4,7 @@
 //!   ./scripts/e2e-clickhouse.sh
 
 use aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient;
-use aperture_aggregator::server::grpc::proto::{
-    PushRequest, QueryRequest, QueryStorageRequest,
-};
+use aperture_aggregator::server::grpc::proto::{PushRequest, QueryRequest, QueryStorageRequest};
 use aperture_shared::protocol::wire::Message;
 use aperture_shared::types::events::{CpuSample, ProfileEvent};
 use std::time::Duration;

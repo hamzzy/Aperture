@@ -79,13 +79,18 @@ impl SyscallCollector {
         info!("Building syscall profile from {} events", self.events.len());
 
         let mut profile = SyscallProfile::new(self.start_time);
-        
+
         // Update end time
         profile.end_time = aperture_shared::utils::time::system_time_nanos();
 
         for event in &self.events {
             let name = syscall_name(event.syscall_id);
-            profile.add_syscall(event.syscall_id, name, event.duration_ns, event.return_value);
+            profile.add_syscall(
+                event.syscall_id,
+                name,
+                event.duration_ns,
+                event.return_value,
+            );
         }
 
         info!(

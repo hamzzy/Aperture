@@ -2,18 +2,27 @@
 
 use once_cell::sync::Lazy;
 use prometheus::{
-    register_counter, register_counter_vec, register_gauge, register_histogram,
-    Counter, CounterVec, Encoder, Gauge, Histogram, TextEncoder,
+    register_counter, register_counter_vec, register_gauge, register_histogram, Counter,
+    CounterVec, Encoder, Gauge, Histogram, TextEncoder,
 };
 
 // ── Push RPC metrics ─────────────────────────────────────────────────────────
 
 pub static PUSH_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
-    register_counter_vec!("aperture_push_total", "Total push RPCs received", &["status"]).unwrap()
+    register_counter_vec!(
+        "aperture_push_total",
+        "Total push RPCs received",
+        &["status"]
+    )
+    .unwrap()
 });
 
 pub static PUSH_EVENTS_TOTAL: Lazy<Counter> = Lazy::new(|| {
-    register_counter!("aperture_push_events_total", "Total events ingested via push").unwrap()
+    register_counter!(
+        "aperture_push_events_total",
+        "Total events ingested via push"
+    )
+    .unwrap()
 });
 
 pub static PUSH_DURATION: Lazy<Histogram> = Lazy::new(|| {

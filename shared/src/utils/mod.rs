@@ -1,7 +1,7 @@
 //! Utility functions and helpers
 
-pub mod time;
 pub mod syscalls;
+pub mod time;
 
 use anyhow::Result;
 

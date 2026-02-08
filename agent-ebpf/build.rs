@@ -1,7 +1,6 @@
 /// Build script for eBPF programs
 ///
 /// This script generates kernel type definitions from vmlinux BTF data
-
 use std::env;
 use std::path::PathBuf;
 

@@ -59,7 +59,9 @@ fn grpc_timeout() -> Duration {
 async fn connect_aggregator(
     url: &str,
 ) -> Result<
-    aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient<tonic::transport::Channel>,
+    aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient<
+        tonic::transport::Channel,
+    >,
     anyhow::Error,
 > {
     use aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient;
@@ -115,17 +117,16 @@ async fn push_with_client(
     if !inner.ok {
         anyhow::bail!("Aggregator push failed: {}", inner.error);
     }
-    info!(
-        "Pushed {} events (seq={}) to aggregator",
-        count, sequence
-    );
+    info!("Pushed {} events (seq={}) to aggregator", count, sequence);
     Ok(Some(inner.backpressure))
 }
 
 /// Returns true if the error indicates the message was too large for the server.
 fn is_message_too_large(err: &anyhow::Error) -> bool {
     let msg = err.to_string();
-    msg.contains("message length too large") || msg.contains("Message too large") || msg.contains("OutOfRange")
+    msg.contains("message length too large")
+        || msg.contains("Message too large")
+        || msg.contains("OutOfRange")
 }
 
 /// Push a batch of events to the aggregator with retry and optional client reuse.
@@ -167,7 +168,9 @@ async fn push_to_aggregator(
                     continue;
                 }
                 let msg = e.to_string();
-                let is_connection_error = msg.contains("connection") || msg.contains("Connection") || msg.contains("unavailable");
+                let is_connection_error = msg.contains("connection")
+                    || msg.contains("Connection")
+                    || msg.contains("unavailable");
                 if is_connection_error {
                     *client = None;
                 }
@@ -242,10 +245,16 @@ fn check_symbol_prerequisites(pid: Option<i32>) {
                 );
             } else {
                 let count = content.lines().count();
-                info!("Kernel symbols available: {} entries in /proc/kallsyms", count);
+                info!(
+                    "Kernel symbols available: {} entries in /proc/kallsyms",
+                    count
+                );
             }
         }
-        Err(e) => warn!("Cannot read /proc/kallsyms: {} — kernel symbols unavailable", e),
+        Err(e) => warn!(
+            "Cannot read /proc/kallsyms: {} — kernel symbols unavailable",
+            e
+        ),
     }
 
     // Check target process /proc/PID/maps
@@ -254,7 +263,10 @@ fn check_symbol_prerequisites(pid: Option<i32>) {
         match std::fs::read_to_string(&maps_path) {
             Ok(content) => {
                 let mappings = content.lines().count();
-                info!("Process {} maps available: {} memory mappings", pid, mappings);
+                info!(
+                    "Process {} maps available: {} memory mappings",
+                    pid, mappings
+                );
             }
             Err(e) => warn!(
                 "Cannot read {} — userspace symbols for PID {} unavailable: {}",
@@ -277,7 +289,7 @@ pub async fn run_profiler(config: Config) -> Result<()> {
         config::ProfileMode::Syscall => run_syscall_profiler(config).await,
         config::ProfileMode::All => {
             info!("Running all profilers concurrently");
-            
+
             // Clone config for each
             let mut cpu_config = config.clone();
             cpu_config.output_path = format!("{}.cpu.svg", config.output_path);
@@ -301,12 +313,13 @@ pub async fn run_profiler(config: Config) -> Result<()> {
             let lock_future = run_lock_profiler(lock_config);
             let syscall_future = run_syscall_profiler(syscall_config);
 
-            let (cpu_res, lock_res, syscall_res) = tokio::join!(cpu_future, lock_future, syscall_future);
-            
+            let (cpu_res, lock_res, syscall_res) =
+                tokio::join!(cpu_future, lock_future, syscall_future);
+
             cpu_res.context("CPU profiler failed")?;
             lock_res.context("Lock profiler failed")?;
             syscall_res.context("Syscall profiler failed")?;
-            
+
             Ok(())
         }
     }
@@ -330,8 +343,8 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
     );
 
     // 1. Load and start eBPF program
-    let mut profiler = CpuProfiler::new(config.sample_rate_hz)
-        .context("Failed to create CPU profiler")?;
+    let mut profiler =
+        CpuProfiler::new(config.sample_rate_hz).context("Failed to create CPU profiler")?;
 
     profiler.set_target_pid(config.target_pid);
     profiler.start().context("Failed to start profiler")?;
@@ -462,13 +475,16 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
     use aya::maps::{perf::AsyncPerfEventArray, StackTraceMap};
     use aya::util::online_cpus;
     use bytes::BytesMut;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
     use collector::lock::{LockCollector, LockEventBpf};
     use collector::symbols::{SymbolCache, SymbolResolver};
     use ebpf::lock_profiler::LockProfiler;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
-    info!("Profiling lock contention for {} seconds", config.duration.as_secs());
+    info!(
+        "Profiling lock contention for {} seconds",
+        config.duration.as_secs()
+    );
 
     let mut profiler = LockProfiler::new()?;
     profiler.set_target_pid(config.target_pid);
@@ -476,11 +492,15 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
 
     let collector = Arc::new(Mutex::new(LockCollector::new()));
     let bpf = profiler.bpf_mut();
-    
-    let events_map = bpf.take_map("LOCK_EVENTS").context("Failed to get LOCK_EVENTS map")?;
+
+    let events_map = bpf
+        .take_map("LOCK_EVENTS")
+        .context("Failed to get LOCK_EVENTS map")?;
     let mut perf_array = AsyncPerfEventArray::try_from(events_map)?;
 
-    let stacks_map = bpf.take_map("LOCK_STACKS").context("Failed to get LOCK_STACKS map")?;
+    let stacks_map = bpf
+        .take_map("LOCK_STACKS")
+        .context("Failed to get LOCK_STACKS map")?;
     let stack_map = Arc::new(StackTraceMap::try_from(stacks_map)?);
 
     let cpus = online_cpus().map_err(|(msg, e)| anyhow::anyhow!("{}: {}", msg, e))?;
@@ -592,10 +612,10 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
     use aya::maps::perf::AsyncPerfEventArray;
     use aya::util::online_cpus;
     use bytes::BytesMut;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
     use collector::syscall::{SyscallCollector, SyscallEventBpf};
     use ebpf::syscall_tracer::SyscallTracer;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
     info!("Tracing syscalls for {} seconds", config.duration.as_secs());
 
@@ -605,8 +625,10 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
 
     let collector = Arc::new(Mutex::new(SyscallCollector::new()));
     let bpf = tracer.bpf_mut();
-    
-    let events_map = bpf.take_map("SYSCALL_EVENTS").context("Failed to get SYSCALL_EVENTS map")?;
+
+    let events_map = bpf
+        .take_map("SYSCALL_EVENTS")
+        .context("Failed to get SYSCALL_EVENTS map")?;
     let mut perf_array = AsyncPerfEventArray::try_from(events_map)?;
 
     let cpus = online_cpus().map_err(|(msg, e)| anyhow::anyhow!("{}: {}", msg, e))?;
@@ -627,7 +649,8 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
                         for i in 0..events.read {
                             let buf_ref = &buffers[i];
                             if buf_ref.len() >= core::mem::size_of::<SyscallEventBpf>() {
-                                let event = unsafe { &*(buf_ref.as_ptr() as *const SyscallEventBpf) };
+                                let event =
+                                    unsafe { &*(buf_ref.as_ptr() as *const SyscallEventBpf) };
                                 let mut coll = collector.lock().await;
                                 if let Err(e) = coll.process_event(event) {
                                     debug!("Error processing syscall event: {}", e);

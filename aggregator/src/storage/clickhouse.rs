@@ -8,8 +8,8 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clickhouse::{Client, Row};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Instant;
 use std::sync::Mutex;
+use std::time::Instant;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -63,7 +63,6 @@ pub struct ClickHouseStore {
 }
 
 impl ClickHouseStore {
-
     pub async fn new(endpoint: &str, database: &str) -> Result<Self> {
         let mut client = Client::default()
             .with_url(endpoint)
@@ -155,14 +154,18 @@ impl ClickHouseStore {
         let start = Instant::now();
         match Self::flush_rows(&self.client, &self.table, &rows).await {
             Ok(()) => {
-                crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["ok"]).inc();
+                crate::metrics::CH_FLUSH_TOTAL
+                    .with_label_values(&["ok"])
+                    .inc();
                 crate::metrics::CH_FLUSH_ROWS.inc_by(count as f64);
                 crate::metrics::CH_FLUSH_DURATION.observe(start.elapsed().as_secs_f64());
                 tracing::debug!("Flushed {} rows to ClickHouse", count);
                 Ok(())
             }
             Err(e) => {
-                crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["error"]).inc();
+                crate::metrics::CH_FLUSH_TOTAL
+                    .with_label_values(&["error"])
+                    .inc();
                 Err(e)
             }
         }
@@ -196,13 +199,17 @@ impl ClickHouseStore {
             let start = Instant::now();
             match ClickHouseStore::flush_rows(client, table, &rows).await {
                 Ok(()) => {
-                    crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["ok"]).inc();
+                    crate::metrics::CH_FLUSH_TOTAL
+                        .with_label_values(&["ok"])
+                        .inc();
                     crate::metrics::CH_FLUSH_ROWS.inc_by(count as f64);
                     crate::metrics::CH_FLUSH_DURATION.observe(start.elapsed().as_secs_f64());
                     tracing::debug!("{}: {} rows to ClickHouse", label, count);
                 }
                 Err(e) => {
-                    crate::metrics::CH_FLUSH_TOTAL.with_label_values(&["error"]).inc();
+                    crate::metrics::CH_FLUSH_TOTAL
+                        .with_label_values(&["error"])
+                        .inc();
                     tracing::warn!("{} failed ({} rows), re-queuing: {:#}", label, count, e);
                     let mut p = pending.lock().await;
                     p.extend(rows);
@@ -327,10 +334,7 @@ impl ClickHouseStore {
         let _ = self.flush().await;
 
         let limit = limit.min(10_000);
-        let mut sql = format!(
-            "SELECT payload FROM {} WHERE 1=1",
-            self.table
-        );
+        let mut sql = format!("SELECT payload FROM {} WHERE 1=1", self.table);
         if agent_id_filter.is_some() {
             sql += " AND agent_id = ?";
         }

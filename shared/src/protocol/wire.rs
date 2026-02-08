@@ -12,8 +12,8 @@
 //! the new fields defaulted.
 
 use crate::types::events::{
-    CpuId, CpuSample, GpuKernelEvent, LockEvent, Pid, ProfileEvent, StackTrace, SyscallEvent,
-    Tid, Timestamp,
+    CpuId, CpuSample, GpuKernelEvent, LockEvent, Pid, ProfileEvent, StackTrace, SyscallEvent, Tid,
+    Timestamp,
 };
 use anyhow::Result;
 use bincode::Options;
@@ -171,9 +171,7 @@ impl Message {
                 return Ok(msg.into_current());
             }
         }
-        anyhow::bail!(
-            "failed to decode message: neither current nor legacy schema succeeded"
-        )
+        anyhow::bail!("failed to decode message: neither current nor legacy schema succeeded")
     }
 }
 

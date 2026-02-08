@@ -48,9 +48,8 @@ impl SyscallTracer {
         }
 
         // Attach eBPF program to raw tracepoints
-        let links =
-            loader::attach_syscall_tracer(&mut self.bpf, self.target_pid)
-                .context("Failed to attach syscall tracer")?;
+        let links = loader::attach_syscall_tracer(&mut self.bpf, self.target_pid)
+            .context("Failed to attach syscall tracer")?;
 
         self.links = Some(links);
         info!("Syscall tracing started successfully");

@@ -62,8 +62,8 @@ async fn main() -> Result<()> {
         .context("Failed to parse duration")?;
 
     // Parse mode
-    use std::str::FromStr;
     use aperture_agent::ProfileMode;
+    use std::str::FromStr;
     let mode = ProfileMode::from_str(&args.mode)?;
 
     // Low-overhead preset: reduce CPU and network usage (APERTURE_LOW_OVERHEAD=1)

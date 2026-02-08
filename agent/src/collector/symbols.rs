@@ -4,8 +4,8 @@
 
 use anyhow::Result;
 use aperture_shared::types::profile::{Frame, LockProfile, Profile, Stack};
-use blazesym::symbolize::{Input, Symbolized, Symbolizer};
 use blazesym::symbolize::source::{Kernel, Process, Source};
+use blazesym::symbolize::{Input, Symbolized, Symbolizer};
 use blazesym::Pid;
 use std::collections::HashMap;
 use tracing::{debug, warn};
@@ -55,7 +55,8 @@ impl SymbolResolver {
 
         debug!(
             "Resolving {} user IPs + {} kernel IPs",
-            user_ips.len(), kernel_ips.len(),
+            user_ips.len(),
+            kernel_ips.len(),
         );
 
         // Resolve kernel IPs using /proc/kallsyms
@@ -88,8 +89,15 @@ impl SymbolResolver {
     }
 
     /// Symbolize a lock profile (same kernel/user split as symbolize_profile)
-    pub fn symbolize_lock_profile(&mut self, profile: &mut LockProfile, pid: Option<i32>) -> Result<()> {
-        debug!("Symbolizing {} unique contention stacks", profile.contentions.len());
+    pub fn symbolize_lock_profile(
+        &mut self,
+        profile: &mut LockProfile,
+        pid: Option<i32>,
+    ) -> Result<()> {
+        debug!(
+            "Symbolizing {} unique contention stacks",
+            profile.contentions.len()
+        );
 
         let mut user_ips: Vec<u64> = Vec::new();
         let mut kernel_ips: Vec<u64> = Vec::new();
@@ -180,9 +188,17 @@ impl SymbolResolver {
                             Frame {
                                 ip,
                                 function: Some(sym.name.to_string()),
-                                file: sym.module.as_ref().and_then(|m| m.to_str()).map(String::from),
+                                file: sym
+                                    .module
+                                    .as_ref()
+                                    .and_then(|m| m.to_str())
+                                    .map(String::from),
                                 line: None, // Line info not available in this API version
-                                module: sym.module.as_ref().and_then(|m| m.to_str()).map(String::from),
+                                module: sym
+                                    .module
+                                    .as_ref()
+                                    .and_then(|m| m.to_str())
+                                    .map(String::from),
                             }
                         }
                         Symbolized::Unknown(_) => {
@@ -265,9 +281,9 @@ impl SymbolResolver {
             let still_unresolved: Vec<u64> = unresolved
                 .iter()
                 .filter(|ip| {
-                    self.cache
-                        .get(ip)
-                        .map_or(true, |f| f.function.as_ref().map_or(true, |n| n.starts_with("0x")))
+                    self.cache.get(ip).map_or(true, |f| {
+                        f.function.as_ref().map_or(true, |n| n.starts_with("0x"))
+                    })
                 })
                 .copied()
                 .collect();
@@ -390,7 +406,6 @@ impl SymbolResolver {
     pub fn cache_size(&self) -> usize {
         self.cache.len()
     }
-
 }
 
 impl Default for SymbolResolver {
@@ -470,7 +485,8 @@ impl SymbolCache {
                 user_resolved = Self::resolve_ips(&symbolizer, &mut self.cache, &user_ips, pid);
             }
             if !kernel_ips.is_empty() {
-                kernel_resolved = Self::resolve_ips(&symbolizer, &mut self.cache, &kernel_ips, None);
+                kernel_resolved =
+                    Self::resolve_ips(&symbolizer, &mut self.cache, &kernel_ips, None);
             }
             // symbolizer is dropped here — Rc freed before any .await
         }
@@ -552,9 +568,17 @@ impl SymbolCache {
                             Frame {
                                 ip,
                                 function: Some(sym.name.to_string()),
-                                file: sym.module.as_ref().and_then(|m| m.to_str()).map(String::from),
+                                file: sym
+                                    .module
+                                    .as_ref()
+                                    .and_then(|m| m.to_str())
+                                    .map(String::from),
                                 line: None,
-                                module: sym.module.as_ref().and_then(|m| m.to_str()).map(String::from),
+                                module: sym
+                                    .module
+                                    .as_ref()
+                                    .and_then(|m| m.to_str())
+                                    .map(String::from),
                             }
                         }
                         Symbolized::Unknown(reason) => {
@@ -578,7 +602,12 @@ impl SymbolCache {
                 resolved
             }
             Err(e) => {
-                warn!("Failed to symbolize {} batch ({} IPs): {}", source_label, ips.len(), e);
+                warn!(
+                    "Failed to symbolize {} batch ({} IPs): {}",
+                    source_label,
+                    ips.len(),
+                    e
+                );
                 for &ip in ips {
                     cache.entry(ip).or_insert_with(|| Frame {
                         ip,

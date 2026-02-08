@@ -50,8 +50,7 @@ mod tests {
     #[tokio::test]
     async fn test_succeeds_first_try() {
         let result: Result<&str, String> =
-            retry_with_backoff("test", 3, Duration::from_millis(1), || async { Ok("done") })
-                .await;
+            retry_with_backoff("test", 3, Duration::from_millis(1), || async { Ok("done") }).await;
         assert_eq!(result.unwrap(), "done");
     }
 

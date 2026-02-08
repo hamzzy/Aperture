@@ -161,22 +161,24 @@ impl Aggregator for AggregatorService {
     ) -> Result<Response<QueryResponse>, Status> {
         self.check_auth(&request)?;
         let req = request.into_inner();
-        let agent_filter = req
-            .agent_id
-            .as_deref()
-            .and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let agent_filter =
+            req.agent_id
+                .as_deref()
+                .and_then(|s| if s.is_empty() { None } else { Some(s) });
         let limit = if req.limit == 0 { 100 } else { req.limit };
 
         match self.buffer.query(agent_filter, limit) {
             Ok(batches) => {
                 let batches = batches
                     .into_iter()
-                    .map(|(agent_id, sequence, event_count, received_at_ns)| BatchInfo {
-                        agent_id,
-                        sequence,
-                        event_count,
-                        received_at_ns,
-                    })
+                    .map(
+                        |(agent_id, sequence, event_count, received_at_ns)| BatchInfo {
+                            agent_id,
+                            sequence,
+                            event_count,
+                            received_at_ns,
+                        },
+                    )
                     .collect();
                 Ok(Response::new(QueryResponse {
                     batches,
@@ -196,10 +198,10 @@ impl Aggregator for AggregatorService {
     ) -> Result<Response<QueryResponse>, Status> {
         self.check_auth(&request)?;
         let req = request.into_inner();
-        let agent_filter = req
-            .agent_id
-            .as_deref()
-            .and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let agent_filter =
+            req.agent_id
+                .as_deref()
+                .and_then(|s| if s.is_empty() { None } else { Some(s) });
         let time_start = req.time_start_ns;
         let time_end = req.time_end_ns;
         let limit = if req.limit == 0 { 100 } else { req.limit };
@@ -219,12 +221,14 @@ impl Aggregator for AggregatorService {
 
         let batches = batches
             .into_iter()
-            .map(|(agent_id, sequence, event_count, received_at_ns)| BatchInfo {
-                agent_id,
-                sequence,
-                event_count: event_count as u64,
-                received_at_ns,
-            })
+            .map(
+                |(agent_id, sequence, event_count, received_at_ns)| BatchInfo {
+                    agent_id,
+                    sequence,
+                    event_count: event_count as u64,
+                    received_at_ns,
+                },
+            )
             .collect();
         Ok(Response::new(QueryResponse {
             batches,
@@ -238,12 +242,12 @@ impl Aggregator for AggregatorService {
     ) -> Result<Response<AggregateResponse>, Status> {
         self.check_auth(&request)?;
         let req = request.into_inner();
-        let agent_filter = req
-            .agent_id
-            .as_deref()
-            .and_then(|s| if s.is_empty() { None } else { Some(s) });
-        let limit = (if req.limit == 0 { 500 } else { req.limit })
-            .min(crate::MAX_AGGREGATE_BATCH_LIMIT);
+        let agent_filter =
+            req.agent_id
+                .as_deref()
+                .and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let limit =
+            (if req.limit == 0 { 500 } else { req.limit }).min(crate::MAX_AGGREGATE_BATCH_LIMIT);
 
         let payloads = match &self.batch_store {
             Some(store) => store
@@ -280,21 +284,21 @@ impl Aggregator for AggregatorService {
             total_events: result.total_events,
             result_json: json,
             error: if out.skipped_batches > 0 {
-                format!("{} batches skipped (invalid/corrupt data)", out.skipped_batches)
+                format!(
+                    "{} batches skipped (invalid/corrupt data)",
+                    out.skipped_batches
+                )
             } else {
                 String::new()
             },
         }))
     }
 
-    async fn diff(
-        &self,
-        request: Request<DiffRequest>,
-    ) -> Result<Response<DiffResponse>, Status> {
+    async fn diff(&self, request: Request<DiffRequest>) -> Result<Response<DiffResponse>, Status> {
         self.check_auth(&request)?;
         let req = request.into_inner();
-        let limit = (if req.limit == 0 { 500 } else { req.limit })
-            .min(crate::MAX_AGGREGATE_BATCH_LIMIT);
+        let limit =
+            (if req.limit == 0 { 500 } else { req.limit }).min(crate::MAX_AGGREGATE_BATCH_LIMIT);
 
         let store = match &self.batch_store {
             Some(s) => s,
@@ -306,18 +310,23 @@ impl Aggregator for AggregatorService {
             }
         };
 
-        let baseline_agent = req
-            .baseline_agent_id
-            .as_deref()
-            .and_then(|s| if s.is_empty() { None } else { Some(s) });
-        let comparison_agent = req
-            .comparison_agent_id
-            .as_deref()
-            .and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let baseline_agent =
+            req.baseline_agent_id
+                .as_deref()
+                .and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let comparison_agent =
+            req.comparison_agent_id
+                .as_deref()
+                .and_then(|s| if s.is_empty() { None } else { Some(s) });
 
         // Fetch + aggregate baseline
         let baseline_payloads = store
-            .fetch_payload_strings(baseline_agent, req.baseline_start_ns, req.baseline_end_ns, limit)
+            .fetch_payload_strings(
+                baseline_agent,
+                req.baseline_start_ns,
+                req.baseline_end_ns,
+                limit,
+            )
             .await
             .map_err(Status::internal)?;
         let baseline_out = crate::aggregate::aggregate_batches(&baseline_payloads)

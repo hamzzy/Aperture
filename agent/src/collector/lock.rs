@@ -67,7 +67,7 @@ impl LockCollector {
 
         // Get user-space stack trace
         let mut frames = Vec::new();
-        
+
         if event.user_stack_id >= 0 {
             match stacks.get(&(event.user_stack_id as u32), 0) {
                 Ok(trace) => {
@@ -86,7 +86,10 @@ impl LockCollector {
                     frames.extend(trace.frames().iter().map(|f| f.ip));
                 }
                 Err(e) => {
-                    debug!("Failed to get kernel stack {}: {}", event.kernel_stack_id, e);
+                    debug!(
+                        "Failed to get kernel stack {}: {}",
+                        event.kernel_stack_id, e
+                    );
                 }
             }
         }
@@ -112,7 +115,7 @@ impl LockCollector {
         info!("Building lock profile from {} events", self.events.len());
 
         let mut profile = LockProfile::new(self.start_time);
-        
+
         // Update end time
         profile.end_time = aperture_shared::utils::time::system_time_nanos();
 
@@ -120,7 +123,7 @@ impl LockCollector {
             if event.stack_trace.is_empty() {
                 continue;
             }
-            
+
             let stack = Stack::from_ips(&event.stack_trace);
             profile.add_contention(event.lock_addr, stack, event.wait_time_ns);
         }
@@ -136,7 +139,11 @@ impl LockCollector {
 
     /// All events for a final push to the aggregator
     pub fn profile_events(&self) -> Vec<ProfileEvent> {
-        self.events.iter().cloned().map(ProfileEvent::Lock).collect()
+        self.events
+            .iter()
+            .cloned()
+            .map(ProfileEvent::Lock)
+            .collect()
     }
 
     /// Return events accumulated since the last call and advance the cursor.
@@ -161,24 +168,39 @@ mod tests {
         let mut collector = LockCollector::new();
 
         let event1 = LockEvent {
-            timestamp: 1000, pid: 123, tid: 123, lock_addr: 0x1000,
-            hold_time_ns: 0, wait_time_ns: 500,
+            timestamp: 1000,
+            pid: 123,
+            tid: 123,
+            lock_addr: 0x1000,
+            hold_time_ns: 0,
+            wait_time_ns: 500,
             stack_trace: vec![0x400000, 0x400100],
-            comm: "test".to_string(), stack_symbols: vec![],
+            comm: "test".to_string(),
+            stack_symbols: vec![],
         };
 
         let event2 = LockEvent {
-            timestamp: 2000, pid: 123, tid: 123, lock_addr: 0x1000,
-            hold_time_ns: 0, wait_time_ns: 300,
+            timestamp: 2000,
+            pid: 123,
+            tid: 123,
+            lock_addr: 0x1000,
+            hold_time_ns: 0,
+            wait_time_ns: 300,
             stack_trace: vec![0x400000, 0x400100],
-            comm: "test".to_string(), stack_symbols: vec![],
+            comm: "test".to_string(),
+            stack_symbols: vec![],
         };
 
         let event3 = LockEvent {
-            timestamp: 3000, pid: 124, tid: 124, lock_addr: 0x2000,
-            hold_time_ns: 0, wait_time_ns: 1000,
+            timestamp: 3000,
+            pid: 124,
+            tid: 124,
+            lock_addr: 0x2000,
+            hold_time_ns: 0,
+            wait_time_ns: 1000,
             stack_trace: vec![0x500000],
-            comm: "other".to_string(), stack_symbols: vec![],
+            comm: "other".to_string(),
+            stack_symbols: vec![],
         };
 
         collector.add_event(event1);

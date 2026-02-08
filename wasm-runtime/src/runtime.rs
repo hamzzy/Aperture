@@ -52,25 +52,30 @@ impl WasmRuntime {
     ///   - `filter(ptr: i32, len: i32) -> i32` — returns 1 to keep, 0 to discard
     ///   - `memory` — linear memory export
     pub fn load_filter(&self, wasm_bytes: &[u8]) -> Result<WasmFilter> {
-        let module = Module::new(&self.engine, wasm_bytes)
-            .context("Failed to compile WASM module")?;
+        let module =
+            Module::new(&self.engine, wasm_bytes).context("Failed to compile WASM module")?;
 
         let mut store = Store::new(&self.engine, ());
         store.set_fuel(FUEL_PER_CALL).ok();
 
         // Create a linker with a host `log` function
         let mut linker = Linker::new(&self.engine);
-        linker.func_wrap("env", "log", |_caller: Caller<'_, ()>, _ptr: i32, _len: i32| {
-            // In production, we could read the string from WASM memory and log it.
-            // For now, silently ignore to prevent filter modules from spamming logs.
-        })?;
+        linker.func_wrap(
+            "env",
+            "log",
+            |_caller: Caller<'_, ()>, _ptr: i32, _len: i32| {
+                // In production, we could read the string from WASM memory and log it.
+                // For now, silently ignore to prevent filter modules from spamming logs.
+            },
+        )?;
 
         // Provide a default memory if the module doesn't export one
         let memory_type = MemoryType::new(1, Some(MAX_MEMORY_PAGES));
         let default_memory = Memory::new(&mut store, memory_type)?;
         linker.define(&store, "env", "memory", default_memory)?;
 
-        let instance = linker.instantiate(&mut store, &module)
+        let instance = linker
+            .instantiate(&mut store, &module)
             .context("Failed to instantiate WASM module")?;
 
         // Get the exported memory (prefer module's own, fall back to provided)

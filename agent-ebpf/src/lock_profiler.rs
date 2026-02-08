@@ -10,7 +10,7 @@ use aya_ebpf::{
 use aya_ebpf_bindings::helpers::bpf_get_ns_current_pid_tgid;
 
 mod common;
-use common::{FUTEX_WAIT, FUTEX_LOCK_PI, FUTEX_WAIT_BITSET, FUTEX_CMD_MASK};
+use common::{FUTEX_CMD_MASK, FUTEX_LOCK_PI, FUTEX_WAIT, FUTEX_WAIT_BITSET};
 
 #[map]
 static LOCK_EVENTS: PerfEventArray<LockEventBpf> = PerfEventArray::new(0);
@@ -68,10 +68,7 @@ fn should_trace() -> bool {
     };
 
     // Use namespace-aware PID lookup
-    let mut nsinfo = aya_ebpf_bindings::bindings::bpf_pidns_info {
-        pid: 0,
-        tgid: 0,
-    };
+    let mut nsinfo = aya_ebpf_bindings::bindings::bpf_pidns_info { pid: 0, tgid: 0 };
     let ret = unsafe {
         bpf_get_ns_current_pid_tgid(
             ns_dev,
@@ -117,10 +114,7 @@ fn try_sys_enter_futex(ctx: &TracePointContext) -> Result<i64, i64> {
 
     let timestamp = unsafe { bpf_ktime_get_ns() };
 
-    let entry = FutexEntry {
-        timestamp,
-        uaddr,
-    };
+    let entry = FutexEntry { timestamp, uaddr };
 
     FUTEX_ENTRIES.insert(&tid, &entry, 0).map_err(|_| 1i64)?;
 
@@ -156,9 +150,7 @@ fn try_sys_exit_futex(ctx: &TracePointContext) -> Result<i64, i64> {
     let kernel_stack_id = unsafe { LOCK_STACKS.get_stackid(ctx, 0) }.unwrap_or(-1);
 
     // BPF_F_USER_STACK = 1 << 8
-    let user_stack_id = unsafe {
-        LOCK_STACKS.get_stackid(ctx, 256)
-    }.unwrap_or(-1);
+    let user_stack_id = unsafe { LOCK_STACKS.get_stackid(ctx, 256) }.unwrap_or(-1);
 
     let comm = bpf_get_current_comm().unwrap_or([0u8; 16]);
 

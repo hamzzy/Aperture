@@ -169,9 +169,8 @@ pub fn aggregate_batches(payloads: &[String]) -> Result<AggregateBatchesResult> 
             total_events += 1;
             match event {
                 ProfileEvent::CpuSample(sample) => {
-                    let profile = cpu.get_or_insert_with(|| {
-                        Profile::new(sample.timestamp, sample.timestamp, 0)
-                    });
+                    let profile = cpu
+                        .get_or_insert_with(|| Profile::new(sample.timestamp, sample.timestamp, 0));
                     if sample.timestamp < profile.start_time {
                         profile.start_time = sample.timestamp;
                     }
@@ -280,18 +279,28 @@ mod tests {
 
     fn cpu(ts: u64, user: Vec<u64>, kernel: Vec<u64>) -> ProfileEvent {
         ProfileEvent::CpuSample(CpuSample {
-            timestamp: ts, pid: 1, tid: 1, cpu_id: 0,
-            user_stack: user, kernel_stack: kernel,
+            timestamp: ts,
+            pid: 1,
+            tid: 1,
+            cpu_id: 0,
+            user_stack: user,
+            kernel_stack: kernel,
             comm: "test".to_string(),
-            user_stack_symbols: vec![], kernel_stack_symbols: vec![],
+            user_stack_symbols: vec![],
+            kernel_stack_symbols: vec![],
         })
     }
 
     fn lock_ev(ts: u64, addr: u64, wait_ns: u64, stack: Vec<u64>) -> ProfileEvent {
         ProfileEvent::Lock(LockEvent {
-            timestamp: ts, pid: 1, tid: 1, lock_addr: addr,
-            hold_time_ns: 0, wait_time_ns: wait_ns,
-            stack_trace: stack, comm: "test".to_string(),
+            timestamp: ts,
+            pid: 1,
+            tid: 1,
+            lock_addr: addr,
+            hold_time_ns: 0,
+            wait_time_ns: wait_ns,
+            stack_trace: stack,
+            comm: "test".to_string(),
             stack_symbols: vec![],
         })
     }
@@ -319,8 +328,13 @@ mod tests {
         let payload = make_payload(vec![
             cpu(1000, vec![0x1000], vec![]),
             ProfileEvent::Syscall(SyscallEvent {
-                timestamp: 2000, pid: 1, tid: 1, syscall_id: 0,
-                duration_ns: 100, return_value: 0, comm: "test".to_string(),
+                timestamp: 2000,
+                pid: 1,
+                tid: 1,
+                syscall_id: 0,
+                duration_ns: 100,
+                return_value: 0,
+                comm: "test".to_string(),
             }),
             lock_ev(3000, 0x1000, 500, vec![0x4000]),
         ]);
@@ -359,8 +373,13 @@ mod tests {
         let payload = make_payload(vec![
             cpu(1000, vec![0x1000], vec![]),
             ProfileEvent::Syscall(SyscallEvent {
-                timestamp: 2000, pid: 1, tid: 1, syscall_id: 0,
-                duration_ns: 100, return_value: 0, comm: "test".to_string(),
+                timestamp: 2000,
+                pid: 1,
+                tid: 1,
+                syscall_id: 0,
+                duration_ns: 100,
+                return_value: 0,
+                comm: "test".to_string(),
             }),
         ]);
         let mut out = aggregate_batches(&[payload]).unwrap();
@@ -372,7 +391,10 @@ mod tests {
     #[test]
     fn test_aggregate_with_symbols() {
         let payload = make_payload(vec![ProfileEvent::CpuSample(CpuSample {
-            timestamp: 1000, pid: 1, tid: 1, cpu_id: 0,
+            timestamp: 1000,
+            pid: 1,
+            tid: 1,
+            cpu_id: 0,
             user_stack: vec![0x1000, 0x2000],
             kernel_stack: vec![],
             comm: "test".to_string(),

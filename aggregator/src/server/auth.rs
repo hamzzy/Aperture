@@ -18,18 +18,14 @@ pub fn make_auth_interceptor(
 
         match req.metadata().get("authorization") {
             Some(val) => {
-                let val_str = val
-                    .to_str()
-                    .map_err(|_| {
-                        audit::grpc_auth_failure("invalid authorization header encoding");
-                        Status::unauthenticated("Invalid authorization header encoding")
-                    })?;
-                let token = val_str
-                    .strip_prefix("Bearer ")
-                    .ok_or_else(|| {
-                        audit::grpc_auth_failure("missing Bearer prefix");
-                        Status::unauthenticated("Missing Bearer prefix")
-                    })?;
+                let val_str = val.to_str().map_err(|_| {
+                    audit::grpc_auth_failure("invalid authorization header encoding");
+                    Status::unauthenticated("Invalid authorization header encoding")
+                })?;
+                let token = val_str.strip_prefix("Bearer ").ok_or_else(|| {
+                    audit::grpc_auth_failure("missing Bearer prefix");
+                    Status::unauthenticated("Missing Bearer prefix")
+                })?;
                 if token == expected.as_str() {
                     audit::grpc_auth_success();
                     Ok(req)

@@ -89,7 +89,12 @@ impl InMemoryBuffer {
                     continue;
                 }
             }
-            out.push((b.agent_id.clone(), b.sequence, b.event_count, b.received_at_ns));
+            out.push((
+                b.agent_id.clone(),
+                b.sequence,
+                b.event_count,
+                b.received_at_ns,
+            ));
         }
         out.reverse();
         Ok(out)

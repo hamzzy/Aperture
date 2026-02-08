@@ -96,7 +96,10 @@ impl CpuCollector {
                     frames
                 }
                 Err(e) => {
-                    debug!("Failed to get kernel stack {}: {}", event.kernel_stack_id, e);
+                    debug!(
+                        "Failed to get kernel stack {}: {}",
+                        event.kernel_stack_id, e
+                    );
                     Vec::new()
                 }
             }
@@ -195,19 +198,38 @@ mod tests {
         assert_eq!(collector.sample_count(), 0);
     }
 
-    fn sample(ts: u64, pid: i32, tid: i32, cpu: u32, user: Vec<u64>, kernel: Vec<u64>) -> CpuSample {
+    fn sample(
+        ts: u64,
+        pid: i32,
+        tid: i32,
+        cpu: u32,
+        user: Vec<u64>,
+        kernel: Vec<u64>,
+    ) -> CpuSample {
         CpuSample {
-            timestamp: ts, pid, tid, cpu_id: cpu,
-            user_stack: user, kernel_stack: kernel,
+            timestamp: ts,
+            pid,
+            tid,
+            cpu_id: cpu,
+            user_stack: user,
+            kernel_stack: kernel,
             comm: "test".to_string(),
-            user_stack_symbols: vec![], kernel_stack_symbols: vec![],
+            user_stack_symbols: vec![],
+            kernel_stack_symbols: vec![],
         }
     }
 
     #[test]
     fn test_add_sample() {
         let mut collector = CpuCollector::new(10_000_000);
-        collector.add_sample(sample(1234567890, 1000, 1001, 0, vec![0x400000, 0x400100], vec![]));
+        collector.add_sample(sample(
+            1234567890,
+            1000,
+            1001,
+            0,
+            vec![0x400000, 0x400100],
+            vec![],
+        ));
         assert_eq!(collector.sample_count(), 1);
     }
 
@@ -235,7 +257,14 @@ mod tests {
     #[test]
     fn test_build_profile_combines_user_and_kernel_stacks() {
         let mut collector = CpuCollector::new(10_000_000);
-        collector.add_sample(sample(100, 1, 1, 0, vec![0x400000], vec![0xffffffff81000000]));
+        collector.add_sample(sample(
+            100,
+            1,
+            1,
+            0,
+            vec![0x400000],
+            vec![0xffffffff81000000],
+        ));
         let profile = collector.build_profile().unwrap();
         assert_eq!(profile.total_samples, 1);
         assert_eq!(profile.samples.len(), 1);

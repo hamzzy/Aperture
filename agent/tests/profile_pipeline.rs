@@ -51,19 +51,14 @@ fn test_full_pipeline_collect_build_output() {
     assert_eq!(profile.samples.len(), 2); // 2 unique stacks
 
     // Verify the hot stack has 80 samples
-    let hot_stack = Stack::from_ips(
-        &[hot_path.as_slice(), &[0xffffffff81000000]].concat(),
-    );
+    let hot_stack = Stack::from_ips(&[hot_path.as_slice(), &[0xffffffff81000000]].concat());
     assert_eq!(*profile.samples.get(&hot_stack).unwrap(), 80);
 
     // Generate flamegraph
     let temp_dir = tempfile::tempdir().unwrap();
     let svg_path = temp_dir.path().join("profile.svg");
-    aperture_agent::output::flamegraph::generate_flamegraph(
-        &profile,
-        svg_path.to_str().unwrap(),
-    )
-    .unwrap();
+    aperture_agent::output::flamegraph::generate_flamegraph(&profile, svg_path.to_str().unwrap())
+        .unwrap();
     assert!(svg_path.exists());
     let svg_content = std::fs::read_to_string(&svg_path).unwrap();
     assert!(svg_content.contains("<svg"));
@@ -71,11 +66,7 @@ fn test_full_pipeline_collect_build_output() {
 
     // Generate JSON
     let json_path = temp_dir.path().join("profile.json");
-    aperture_agent::output::json::generate_json(
-        &profile,
-        json_path.to_str().unwrap(),
-    )
-    .unwrap();
+    aperture_agent::output::json::generate_json(&profile, json_path.to_str().unwrap()).unwrap();
     assert!(json_path.exists());
 
     // Verify JSON structure

@@ -4,8 +4,8 @@
 use crate::aggregate;
 use crate::alerts::{AlertMetric, AlertStore, MetricSnapshot, Operator, Severity};
 use crate::buffer::InMemoryBuffer;
-use crate::MAX_AGGREGATE_BATCH_LIMIT;
 use crate::storage::BatchStore;
+use crate::MAX_AGGREGATE_BATCH_LIMIT;
 use aperture_shared::types::diff;
 use aperture_shared::types::profile::{LockProfile, Profile, SyscallProfile};
 use hyper::{body::to_bytes, Body, Request, Response, StatusCode};
@@ -113,7 +113,11 @@ pub async fn handle_api(
                 if let Some((k, v)) = part.split_once('=') {
                     match k {
                         "agent_id" => agent_id = Some(v.to_string()),
-                        "limit" => if let Ok(n) = v.parse::<u32>() { limit = n },
+                        "limit" => {
+                            if let Ok(n) = v.parse::<u32>() {
+                                limit = n
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -145,7 +149,9 @@ pub async fn handle_api(
     }
 
     if path == "/api/aggregate" && method == hyper::Method::POST {
-        let body_bytes = to_bytes(req.into_body()).await.map_err(hyper::Error::from)?;
+        let body_bytes = to_bytes(req.into_body())
+            .await
+            .map_err(hyper::Error::from)?;
         let api_req: AggregateRequest = match serde_json::from_slice(&body_bytes) {
             Ok(r) => r,
             Err(e) => {
@@ -155,29 +161,46 @@ pub async fn handle_api(
                 )));
             }
         };
-        let agent_filter = api_req.agent_id.as_deref().and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let agent_filter =
+            api_req
+                .agent_id
+                .as_deref()
+                .and_then(|s| if s.is_empty() { None } else { Some(s) });
         let limit = api_req.limit.unwrap_or(500).min(MAX_AGGREGATE_BATCH_LIMIT);
 
         // Try ClickHouse first (with timeout), fall back to in-memory buffer
         let payloads = if let Some(ref s) = store {
-            let ch_future = s.fetch_payload_strings(agent_filter, api_req.time_start_ns, api_req.time_end_ns, limit);
+            let ch_future = s.fetch_payload_strings(
+                agent_filter,
+                api_req.time_start_ns,
+                api_req.time_end_ns,
+                limit,
+            );
             match tokio::time::timeout(Duration::from_secs(5), ch_future).await {
                 Ok(Ok(p)) if !p.is_empty() => p,
                 Ok(Ok(_)) => {
                     // ClickHouse returned empty — fall back to buffer
-                    buffer.payload_strings(agent_filter, limit).unwrap_or_default()
+                    buffer
+                        .payload_strings(agent_filter, limit)
+                        .unwrap_or_default()
                 }
                 Ok(Err(e)) => {
                     tracing::warn!("ClickHouse query failed, using buffer: {}", e);
-                    buffer.payload_strings(agent_filter, limit).unwrap_or_default()
+                    buffer
+                        .payload_strings(agent_filter, limit)
+                        .unwrap_or_default()
                 }
                 Err(_) => {
                     tracing::warn!("ClickHouse query timed out (5s), using buffer");
-                    buffer.payload_strings(agent_filter, limit).unwrap_or_default()
+                    buffer
+                        .payload_strings(agent_filter, limit)
+                        .unwrap_or_default()
                 }
             }
         } else {
-            buffer.payload_strings(agent_filter, limit).unwrap_or_default()
+            buffer
+                .payload_strings(agent_filter, limit)
+                .unwrap_or_default()
         };
 
         let out = match aggregate::aggregate_batches(&payloads) {
@@ -194,7 +217,10 @@ pub async fn handle_api(
         let json = result.to_json();
         let mut body_value = serde_json::to_value(&json).unwrap_or_default();
         if let Some(obj) = body_value.as_object_mut() {
-            obj.insert("skipped_batches".to_string(), serde_json::json!(out.skipped_batches));
+            obj.insert(
+                "skipped_batches".to_string(),
+                serde_json::json!(out.skipped_batches),
+            );
         }
         let body = body_value.to_string();
         let res = add_cors_headers(json_response(&body, StatusCode::OK));
@@ -208,12 +234,15 @@ pub async fn handle_api(
                 let body = serde_json::json!({
                     "result_json": "{}",
                     "error": "storage not configured (enable ClickHouse)"
-                }).to_string();
+                })
+                .to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::SERVICE_UNAVAILABLE));
                 return Ok(res);
             }
         };
-        let body_bytes = to_bytes(req.into_body()).await.map_err(hyper::Error::from)?;
+        let body_bytes = to_bytes(req.into_body())
+            .await
+            .map_err(hyper::Error::from)?;
         let api_req: DiffRequest = match serde_json::from_slice(&body_bytes) {
             Ok(r) => r,
             Err(e) => {
@@ -224,8 +253,20 @@ pub async fn handle_api(
             }
         };
         let limit = api_req.limit.unwrap_or(500).min(MAX_AGGREGATE_BATCH_LIMIT);
-        let baseline_agent = api_req.baseline_agent_id.as_deref().and_then(|s| if s.is_empty() { None } else { Some(s) });
-        let comparison_agent = api_req.comparison_agent_id.as_deref().and_then(|s| if s.is_empty() { None } else { Some(s) });
+        let baseline_agent = api_req.baseline_agent_id.as_deref().and_then(|s| {
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        });
+        let comparison_agent = api_req.comparison_agent_id.as_deref().and_then(|s| {
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        });
         let baseline_payloads = match store
             .fetch_payload_strings(
                 baseline_agent,
@@ -237,7 +278,9 @@ pub async fn handle_api(
         {
             Ok(p) => p,
             Err(e) => {
-                let body = serde_json::json!({ "result_json": "", "error": format!("baseline: {}", e) }).to_string();
+                let body =
+                    serde_json::json!({ "result_json": "", "error": format!("baseline: {}", e) })
+                        .to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
                 return Ok(res);
             }
@@ -253,7 +296,9 @@ pub async fn handle_api(
         {
             Ok(p) => p,
             Err(e) => {
-                let body = serde_json::json!({ "result_json": "", "error": format!("comparison: {}", e) }).to_string();
+                let body =
+                    serde_json::json!({ "result_json": "", "error": format!("comparison: {}", e) })
+                        .to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
                 return Ok(res);
             }
@@ -261,7 +306,8 @@ pub async fn handle_api(
         let baseline_out = match aggregate::aggregate_batches(&baseline_payloads) {
             Ok(o) => o,
             Err(e) => {
-                let body = serde_json::json!({ "result_json": "", "error": e.to_string() }).to_string();
+                let body =
+                    serde_json::json!({ "result_json": "", "error": e.to_string() }).to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
                 return Ok(res);
             }
@@ -269,7 +315,8 @@ pub async fn handle_api(
         let comparison_out = match aggregate::aggregate_batches(&comparison_payloads) {
             Ok(o) => o,
             Err(e) => {
-                let body = serde_json::json!({ "result_json": "", "error": e.to_string() }).to_string();
+                let body =
+                    serde_json::json!({ "result_json": "", "error": e.to_string() }).to_string();
                 let res = add_cors_headers(json_response(&body, StatusCode::INTERNAL_SERVER_ERROR));
                 return Ok(res);
             }
@@ -318,7 +365,9 @@ pub async fn handle_api(
 
     // POST /api/alerts — create a new alert rule
     if path == "/api/alerts" && method == hyper::Method::POST {
-        let body_bytes = to_bytes(req.into_body()).await.map_err(hyper::Error::from)?;
+        let body_bytes = to_bytes(req.into_body())
+            .await
+            .map_err(hyper::Error::from)?;
         #[derive(serde::Deserialize)]
         struct CreateAlertRequest {
             name: String,
@@ -357,13 +406,20 @@ pub async fn handle_api(
             )));
         }
         let deleted = alert_store.delete_rule(id);
-        let status = if deleted { StatusCode::OK } else { StatusCode::NOT_FOUND };
+        let status = if deleted {
+            StatusCode::OK
+        } else {
+            StatusCode::NOT_FOUND
+        };
         let body = serde_json::json!({ "deleted": deleted }).to_string();
         return Ok(add_cors_headers(json_response(&body, status)));
     }
 
     // POST /api/alerts/<id>/toggle — enable/disable a rule
-    if path.ends_with("/toggle") && path.starts_with("/api/alerts/") && method == hyper::Method::POST {
+    if path.ends_with("/toggle")
+        && path.starts_with("/api/alerts/")
+        && method == hyper::Method::POST
+    {
         let id = &path["/api/alerts/".len()..path.len() - "/toggle".len()];
         match alert_store.toggle_rule(id) {
             Some(enabled) => {
@@ -372,7 +428,10 @@ pub async fn handle_api(
             }
             None => {
                 let body = serde_json::json!({ "error": "rule not found" }).to_string();
-                return Ok(add_cors_headers(json_response(&body, StatusCode::NOT_FOUND)));
+                return Ok(add_cors_headers(json_response(
+                    &body,
+                    StatusCode::NOT_FOUND,
+                )));
             }
         }
     }
@@ -436,13 +495,8 @@ pub async fn handle_api(
                 }
             }
         }
-        let res = crate::export::export_json(
-            buffer,
-            store.as_ref(),
-            event_type.as_deref(),
-            limit,
-        )
-        .await;
+        let res =
+            crate::export::export_json(buffer, store.as_ref(), event_type.as_deref(), limit).await;
         return Ok(res);
     }
 

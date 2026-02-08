@@ -80,7 +80,6 @@ impl CpuProfiler {
     pub fn bpf_mut(&mut self) -> &mut Ebpf {
         &mut self.bpf
     }
-
 }
 
 impl Drop for CpuProfiler {

@@ -173,11 +173,8 @@ impl LockProfile {
     }
 
     pub fn add_contention(&mut self, lock_addr: u64, stack: Stack, wait_ns: u64) {
-        let stats = self
-            .contentions
-            .entry((lock_addr, stack))
-            .or_default();
-        
+        let stats = self.contentions.entry((lock_addr, stack)).or_default();
+
         stats.count += 1;
         stats.total_wait_ns += wait_ns;
         stats.max_wait_ns = stats.max_wait_ns.max(wait_ns);
@@ -267,7 +264,7 @@ impl SyscallProfile {
             (63 - duration_ns.leading_zeros()).min(29) as usize
         };
         stats.latency_histogram[bucket] += 1;
-        
+
         self.total_events += 1;
     }
 }
@@ -340,7 +337,13 @@ mod tests {
 
         assert_eq!(profile.total_samples, 3);
         assert_eq!(profile.samples.len(), 2);
-        assert_eq!(*profile.samples.get(&Stack::from_ips(&[0x1000])).unwrap(), 2);
-        assert_eq!(*profile.samples.get(&Stack::from_ips(&[0x2000])).unwrap(), 1);
+        assert_eq!(
+            *profile.samples.get(&Stack::from_ips(&[0x1000])).unwrap(),
+            2
+        );
+        assert_eq!(
+            *profile.samples.get(&Stack::from_ips(&[0x2000])).unwrap(),
+            1
+        );
     }
 }

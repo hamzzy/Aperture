@@ -210,13 +210,7 @@ impl AlertStore {
     /// List recent fired alert events.
     pub fn list_history(&self, limit: usize) -> Vec<AlertEvent> {
         let inner = self.inner.lock().unwrap();
-        inner
-            .history
-            .iter()
-            .rev()
-            .take(limit)
-            .cloned()
-            .collect()
+        inner.history.iter().rev().take(limit).cloned().collect()
     }
 
     /// Evaluate all enabled rules against the current metrics snapshot.

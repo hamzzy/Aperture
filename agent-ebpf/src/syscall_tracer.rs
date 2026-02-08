@@ -62,10 +62,7 @@ fn should_trace() -> bool {
     };
 
     // Use namespace-aware PID lookup
-    let mut nsinfo = aya_ebpf_bindings::bindings::bpf_pidns_info {
-        pid: 0,
-        tgid: 0,
-    };
+    let mut nsinfo = aya_ebpf_bindings::bindings::bpf_pidns_info { pid: 0, tgid: 0 };
     let ret = unsafe {
         bpf_get_ns_current_pid_tgid(
             ns_dev,

@@ -138,7 +138,11 @@ pub fn diff_syscall(baseline: &SyscallProfile, comparison: &SyscallProfile) -> S
         })
         .collect();
 
-    syscalls.sort_by(|a, b| b.delta_count.unsigned_abs().cmp(&a.delta_count.unsigned_abs()));
+    syscalls.sort_by(|a, b| {
+        b.delta_count
+            .unsigned_abs()
+            .cmp(&a.delta_count.unsigned_abs())
+    });
 
     SyscallDiff {
         baseline_total: baseline.total_events,

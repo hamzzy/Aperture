@@ -42,10 +42,7 @@ pub async fn serve_admin(
     Server::bind(&addr).serve(make_svc).await
 }
 
-fn handle(
-    req: Request<Body>,
-    buffer: &InMemoryBuffer,
-) -> Result<Response<Body>, hyper::Error> {
+fn handle(req: Request<Body>, buffer: &InMemoryBuffer) -> Result<Response<Body>, hyper::Error> {
     let path = req.uri().path();
     let (response, status) = match path {
         "/healthz" => (Response::new(Body::from("ok\n")), 200),
