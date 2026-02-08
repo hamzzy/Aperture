@@ -1,10 +1,11 @@
 //! gRPC service implementation (Phase 5)
 
 use crate::buffer::InMemoryBuffer;
+use crate::metrics;
 use crate::storage::BatchStore;
 use aperture_shared::protocol::wire::Message;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tonic::{Request, Response, Status};
 
 pub mod proto {
@@ -16,6 +17,9 @@ use proto::{
     AggregateRequest, AggregateResponse, BatchInfo, DiffRequest, DiffResponse, PushRequest,
     PushResponse, QueryRequest, QueryResponse, QueryStorageRequest,
 };
+
+// Re-export for main to use with_interceptor
+pub use proto::aggregator_server::AggregatorServer as GrpcAggregatorServer;
 
 /// gRPC server state
 pub struct AggregatorService {
@@ -44,6 +48,7 @@ impl AggregatorService {
 #[tonic::async_trait]
 impl Aggregator for AggregatorService {
     async fn push(&self, request: Request<PushRequest>) -> Result<Response<PushResponse>, Status> {
+        let start = Instant::now();
         let req = request.into_inner();
         let agent_id = if req.agent_id.is_empty() {
             "unknown".to_string()
@@ -51,20 +56,25 @@ impl Aggregator for AggregatorService {
             req.agent_id
         };
 
-        match self.buffer.push(agent_id.clone(), req.sequence, req.payload.clone()) {
+        let event_count = Message::from_bytes(&req.payload)
+            .map(|m| m.events.len() as u32)
+            .unwrap_or(0);
+
+        let payload = req.payload;
+        match self.buffer.push(agent_id.clone(), req.sequence, payload.clone()) {
             Ok(()) => {}
             Err(e) => {
+                metrics::PUSH_TOTAL.with_label_values(&["error"]).inc();
+                metrics::PUSH_DURATION.observe(start.elapsed().as_secs_f64());
                 return Ok(Response::new(PushResponse {
                     ok: false,
                     error: e,
-                }))
+                    backpressure: false,
+                }));
             }
         }
 
         if let Some(store) = &self.batch_store {
-            let event_count = Message::from_bytes(&req.payload)
-                .map(|m| m.events.len() as u32)
-                .unwrap_or(0);
             let received_at_ns = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -75,7 +85,7 @@ impl Aggregator for AggregatorService {
                     req.sequence,
                     received_at_ns,
                     event_count,
-                    &req.payload,
+                    &payload,
                 )
                 .await
             {
@@ -83,9 +93,16 @@ impl Aggregator for AggregatorService {
             }
         }
 
+        metrics::PUSH_TOTAL.with_label_values(&["ok"]).inc();
+        metrics::PUSH_EVENTS_TOTAL.inc_by(event_count as f64);
+        metrics::PUSH_DURATION.observe(start.elapsed().as_secs_f64());
+
+        let backpressure = self.buffer.utilization() > 0.8;
+
         Ok(Response::new(PushResponse {
             ok: true,
             error: String::new(),
+            backpressure,
         }))
     }
 

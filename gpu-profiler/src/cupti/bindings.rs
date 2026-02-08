@@ -1,6 +1,6 @@
-//! CUPTI FFI bindings (Phase 4+)
+//! CUPTI FFI bindings
 
-// TODO Phase 4: Generate FFI bindings for CUPTI
+// TODO : Generate FFI bindings for CUPTI
 // Use bindgen or manual bindings for CUPTI headers
 // Key functions:
 // - cuptiSubscribe()

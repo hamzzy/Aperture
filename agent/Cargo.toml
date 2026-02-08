@@ -29,7 +29,7 @@ bincode.workspace = true
 # Internal dependencies
 aperture-shared = { path = "../shared", features = ["wire-protocol"] }
 aperture-aggregator = { path = "../aggregator" }
-tonic = "0.11"
+tonic = { version = "0.11", features = ["gzip"] }
 
 # Symbol resolution
 blazesym = "0.2"

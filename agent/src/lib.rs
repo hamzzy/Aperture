@@ -7,6 +7,7 @@ pub mod collector;
 pub mod config;
 pub mod ebpf;
 pub mod output;
+pub mod retry;
 pub mod wasm;
 
 pub use config::Config;
@@ -24,6 +25,7 @@ static PUSH_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// How often to stream pending events to the aggregator during profiling.
 const PUSH_INTERVAL: Duration = Duration::from_secs(5);
+const PUSH_INTERVAL_MAX: Duration = Duration::from_secs(30);
 
 /// Generate an agent ID from the hostname (or fallback to PID).
 fn agent_id() -> String {
@@ -33,38 +35,131 @@ fn agent_id() -> String {
         .unwrap_or_else(|| format!("agent-{}", std::process::id()))
 }
 
-/// Push a batch of events to the aggregator.
-async fn push_to_aggregator(
+/// Connect to the aggregator with timeouts. Used for connection reuse and reconnects.
+async fn connect_aggregator(
     url: &str,
-    agent_id: &str,
-    events: Vec<ProfileEvent>,
-) -> Result<()> {
+) -> Result<
+    aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient<tonic::transport::Channel>,
+    anyhow::Error,
+> {
     use aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient;
-    use aperture_aggregator::server::grpc::proto::PushRequest;
+    use tonic::codec::CompressionEncoding;
     use tonic::transport::Channel;
 
+    let channel = Channel::from_shared(url.to_string())?
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
+        .connect()
+        .await
+        .context("Failed to connect to aggregator")?;
+    Ok(AggregatorClient::new(channel)
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip))
+}
+
+/// Push a batch of events using an existing client. Returns Ok(Some(backpressure)) when a push
+/// was performed, Ok(None) when events were empty. On connection failure the caller should
+/// reconnect and retry.
+async fn push_with_client(
+    client: &mut aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient<
+        tonic::transport::Channel,
+    >,
+    agent_id: &str,
+    events: Vec<ProfileEvent>,
+) -> Result<Option<bool>, anyhow::Error> {
+    use aperture_aggregator::server::grpc::proto::PushRequest;
+
     if events.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let count = events.len();
     let sequence = PUSH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let message = Message::new(sequence, events);
     let payload = message.to_bytes()?;
-    let mut client = AggregatorClient::<Channel>::connect(url.to_string())
-        .await
-        .context("Failed to connect to aggregator")?;
     let req = PushRequest {
         agent_id: agent_id.to_string(),
         sequence,
         payload,
     };
-    let res = client.push(tonic::Request::new(req)).await?;
+    let mut request = tonic::Request::new(req);
+    if let Ok(token) = std::env::var("APERTURE_AUTH_TOKEN") {
+        let value = format!("Bearer {}", token);
+        if let Ok(v) = value.parse::<tonic::metadata::MetadataValue<tonic::metadata::Ascii>>() {
+            request.metadata_mut().insert("authorization", v);
+        }
+    }
+    let res = client.push(request).await?;
     let inner = res.into_inner();
     if !inner.ok {
         anyhow::bail!("Aggregator push failed: {}", inner.error);
     }
-    info!("Pushed {} events (seq={}) to aggregator at {}", count, sequence, url);
-    Ok(())
+    info!(
+        "Pushed {} events (seq={}) to aggregator",
+        count, sequence
+    );
+    Ok(Some(inner.backpressure))
+}
+
+/// Push a batch of events to the aggregator with retry and optional client reuse.
+/// `client` is used if Some; on connection failure it is set to None and the caller should reconnect.
+/// Returns Ok(Some(backpressure)) when a push was performed, Ok(None) when events were empty.
+async fn push_to_aggregator(
+    client: &mut Option<
+        aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient<
+            tonic::transport::Channel,
+        >,
+    >,
+    url: &str,
+    agent_id: &str,
+    events: Vec<ProfileEvent>,
+) -> Result<Option<bool>, anyhow::Error> {
+    if events.is_empty() {
+        return Ok(None);
+    }
+    if client.is_none() {
+        *client = Some(connect_aggregator(url).await?);
+    }
+    let c = client.as_mut().unwrap();
+    match push_with_client(c, agent_id, events).await {
+        Ok(b) => Ok(b),
+        Err(e) => {
+            let msg = e.to_string();
+            let is_connection_error = msg.contains("connection") || msg.contains("Connection") || msg.contains("unavailable");
+            if is_connection_error {
+                *client = None;
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Push with up to 3 attempts (exponential backoff). Keeps `client` in scope so it can be mutated.
+async fn push_to_aggregator_with_retry(
+    client: &mut Option<
+        aperture_aggregator::server::grpc::proto::aggregator_client::AggregatorClient<
+            tonic::transport::Channel,
+        >,
+    >,
+    url: &str,
+    agent_id: &str,
+    events: Vec<ProfileEvent>,
+) -> Result<Option<bool>, anyhow::Error> {
+    let mut delay = Duration::from_millis(500);
+    for attempt in 1..=3 {
+        match push_to_aggregator(client, url, agent_id, events.clone()).await {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                warn!("aggregator push failed (attempt {}/3): {}", attempt, e);
+                if attempt < 3 {
+                    tokio::time::sleep(delay).await;
+                    delay = (delay * 2).min(PUSH_INTERVAL_MAX);
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
+    unreachable!()
 }
 
 /// Run the profiler with the given configuration.
@@ -186,13 +281,20 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
         let url = url.clone();
         let agent = agent_id();
         let coll = collector.clone();
+        let initial_interval = config.push_interval();
         Some(tokio::spawn(async move {
-            let mut interval = tokio::time::interval(PUSH_INTERVAL);
+            let mut client = None;
+            let mut push_interval = initial_interval;
             loop {
-                interval.tick().await;
+                tokio::time::sleep(push_interval).await;
                 let events = coll.lock().await.take_pending_events();
-                if let Err(e) = push_to_aggregator(&url, &agent, events).await {
-                    warn!("Streaming push failed: {}", e);
+                let result = push_to_aggregator_with_retry(&mut client, &url, &agent, events).await;
+                match result {
+                    Ok(Some(true)) => {
+                        push_interval = (push_interval + push_interval).min(PUSH_INTERVAL_MAX)
+                    }
+                    Ok(Some(false)) | Ok(None) => push_interval = initial_interval,
+                    Err(e) => warn!("Streaming push failed: {}", e),
                 }
             }
         }))
@@ -225,10 +327,9 @@ async fn run_cpu_profiler(config: Config) -> Result<()> {
 
     // Final push of any remaining events
     if let Some(ref url) = config.aggregator_url {
+        let mut client = None;
         let events = collector.take_pending_events();
-        if let Err(e) = push_to_aggregator(url, &agent_id(), events).await {
-            warn!("Final push failed: {}", e);
-        }
+        let _ = push_to_aggregator_with_retry(&mut client, url, &agent_id(), events).await;
     }
 
     let mut profile = collector.build_profile()?;
@@ -310,13 +411,20 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
         let url = url.clone();
         let agent = agent_id();
         let coll = collector.clone();
+        let initial_interval = config.push_interval();
         Some(tokio::spawn(async move {
-            let mut interval = tokio::time::interval(PUSH_INTERVAL);
+            let mut client = None;
+            let mut push_interval = initial_interval;
             loop {
-                interval.tick().await;
+                tokio::time::sleep(push_interval).await;
                 let events = coll.lock().await.take_pending_events();
-                if let Err(e) = push_to_aggregator(&url, &agent, events).await {
-                    warn!("Streaming push failed: {}", e);
+                let result = push_to_aggregator_with_retry(&mut client, &url, &agent, events).await;
+                match result {
+                    Ok(Some(true)) => {
+                        push_interval = (push_interval + push_interval).min(PUSH_INTERVAL_MAX)
+                    }
+                    Ok(Some(false)) | Ok(None) => push_interval = initial_interval,
+                    Err(e) => warn!("Streaming push failed: {}", e),
                 }
             }
         }))
@@ -345,10 +453,9 @@ async fn run_lock_profiler(config: Config) -> Result<()> {
 
     // Final push of remaining events
     if let Some(ref url) = config.aggregator_url {
+        let mut client = None;
         let events = collector.take_pending_events();
-        if let Err(e) = push_to_aggregator(url, &agent_id(), events).await {
-            warn!("Final push failed: {}", e);
-        }
+        let _ = push_to_aggregator_with_retry(&mut client, url, &agent_id(), events).await;
     }
 
     let mut profile = collector.build_profile()?;
@@ -424,13 +531,20 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
         let url = url.clone();
         let agent = agent_id();
         let coll = collector.clone();
+        let initial_interval = config.push_interval();
         Some(tokio::spawn(async move {
-            let mut interval = tokio::time::interval(PUSH_INTERVAL);
+            let mut client = None;
+            let mut push_interval = initial_interval;
             loop {
-                interval.tick().await;
+                tokio::time::sleep(push_interval).await;
                 let events = coll.lock().await.take_pending_events();
-                if let Err(e) = push_to_aggregator(&url, &agent, events).await {
-                    warn!("Streaming push failed: {}", e);
+                let result = push_to_aggregator_with_retry(&mut client, &url, &agent, events).await;
+                match result {
+                    Ok(Some(true)) => {
+                        push_interval = (push_interval + push_interval).min(PUSH_INTERVAL_MAX)
+                    }
+                    Ok(Some(false)) | Ok(None) => push_interval = initial_interval,
+                    Err(e) => warn!("Streaming push failed: {}", e),
                 }
             }
         }))
@@ -459,10 +573,9 @@ async fn run_syscall_profiler(config: Config) -> Result<()> {
 
     // Final push of remaining events
     if let Some(ref url) = config.aggregator_url {
+        let mut client = None;
         let events = collector.take_pending_events();
-        if let Err(e) = push_to_aggregator(url, &agent_id(), events).await {
-            warn!("Final push failed: {}", e);
-        }
+        let _ = push_to_aggregator_with_retry(&mut client, url, &agent_id(), events).await;
     }
 
     let profile = collector.build_profile()?;

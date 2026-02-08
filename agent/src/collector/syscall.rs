@@ -97,7 +97,7 @@ impl SyscallCollector {
         Ok(profile)
     }
 
-    /// All events for a final push to the aggregator (Phase 5+).
+    /// All events for a final push to the aggregator.
     pub fn profile_events(&self) -> Vec<ProfileEvent> {
         self.events
             .iter()

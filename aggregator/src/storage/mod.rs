@@ -1,11 +1,10 @@
-//! Storage backends (Phase 5+)
+//! Storage backends
 
 #[cfg(feature = "clickhouse-storage")]
 pub mod clickhouse;
 
 use async_trait::async_trait;
 
-/// Persistent batch store for Phase 6 (e.g. ClickHouse). Optional in the push path.
 #[async_trait]
 pub trait BatchStore: Send + Sync {
     /// Persist one batch. Called after in-memory buffer is updated.
@@ -38,5 +37,10 @@ pub trait BatchStore: Send + Sync {
         _limit: u32,
     ) -> Result<Vec<String>, String> {
         Ok(Vec::new())
+    }
+
+    /// Gracefully shut down the store, flushing pending data.
+    async fn shutdown(&self) -> Result<(), String> {
+        Ok(())
     }
 }

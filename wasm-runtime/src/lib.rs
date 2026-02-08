@@ -1,4 +1,4 @@
-//! WASM Filter Runtime (Phase 3+)
+//! WASM Filter Runtime 
 //!
 //! Allows users to write custom filtering logic in any language that compiles
 //! to WebAssembly. Filters can decide which events to keep or discard.
@@ -15,7 +15,7 @@ pub trait WasmFilter {
     fn filter_event(&mut self, event: &ProfileEvent) -> Result<bool>;
 }
 
-// TODO Phase 3: Implement WASM runtime for event filtering
+// TODO : Implement WASM runtime for event filtering
 // - Load WASM modules compiled from user code
 // - Provide API for filtering events
 // - Handle security and sandboxing

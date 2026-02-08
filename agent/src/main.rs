@@ -66,16 +66,26 @@ async fn main() -> Result<()> {
     use aperture_agent::ProfileMode;
     let mode = ProfileMode::from_str(&args.mode)?;
 
+    // Low-overhead preset: reduce CPU and network usage (APERTURE_LOW_OVERHEAD=1)
+    let low_overhead = std::env::var("APERTURE_LOW_OVERHEAD").as_deref() == Ok("1");
+    let sample_rate_hz = if low_overhead && args.sample_rate == 99 {
+        49
+    } else {
+        args.sample_rate
+    };
+    let push_interval_secs = if low_overhead { Some(10) } else { None };
+
     // Create configuration
     let config = Config {
         mode,
         target_pid: args.pid,
-        sample_rate_hz: args.sample_rate,
+        sample_rate_hz,
         duration,
         output_path: args.output.clone(),
         json_output: args.json.clone(),
         filter_path: None,
         aggregator_url: args.aggregator,
+        push_interval_secs,
     };
 
     // Check if running as root (required for eBPF)
@@ -93,16 +103,21 @@ async fn main() -> Result<()> {
 
 /// Initialize tracing/logging
 fn init_tracing(verbose: bool) -> Result<()> {
+    use tracing_subscriber::fmt;
+
     let filter = if verbose {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"))
     } else {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
     };
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_target(false))
-        .init();
+    let registry = tracing_subscriber::registry().with(filter);
+
+    if std::env::var("APERTURE_LOG_FORMAT").as_deref() == Ok("json") {
+        registry.with(fmt::layer().json().with_target(true)).init();
+    } else {
+        registry.with(fmt::layer().with_target(false)).init();
+    }
 
     Ok(())
 }

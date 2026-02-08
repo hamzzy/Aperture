@@ -50,7 +50,7 @@ clap = { version = "4.4", features = ["derive", "env"] }
 # WASM
 wasmtime = "16.0"
 
-# Storage (Phase 5+)
+# Storage
 clickhouse = "0.11"
 
 # Metrics

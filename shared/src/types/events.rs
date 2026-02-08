@@ -70,7 +70,7 @@ pub struct SyscallEvent {
     pub comm: String,
 }
 
-/// GPU kernel execution event (Phase 4)
+/// GPU kernel execution event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuKernelEvent {
     pub timestamp: Timestamp,

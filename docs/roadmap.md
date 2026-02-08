@@ -171,20 +171,20 @@ This document outlines the development phases and milestones for the Aperture pr
 **Milestones**:
 - [ ] Security hardening
   - [ ] Capability-based permissions
-  - [ ] Secure agent-aggregator communication
-  - [ ] Audit logging
+  - [x] Secure agent-aggregator communication (Bearer token auth, gRPC interceptor)
+  - [x] Audit logging (structured events for auth and admin HTTP; target aperture::audit)
 - [ ] Reliability
-  - [ ] Error handling and recovery
-  - [ ] Resource limits and backpressure
-  - [ ] Graceful degradation
+  - [x] Error handling and recovery (agent push retry + connection reuse)
+  - [x] Resource limits and backpressure (configurable buffer, message size, backpressure signal)
+  - [x] Graceful degradation (graceful ClickHouse shutdown flush)
 - [ ] Observability
-  - [ ] Prometheus metrics
-  - [ ] Structured logging
-  - [ ] Health checks
+  - [x] Prometheus metrics (aggregator metrics module + instrumentation)
+  - [x] Structured logging (APERTURE_LOG_FORMAT=json)
+  - [x] Health checks (admin HTTP: /healthz, /readyz, /metrics; tonic-health gRPC)
 - [ ] Performance optimization
-  - [ ] Memory efficiency
-  - [ ] CPU overhead tuning
-  - [ ] Network optimization
+  - [x] Memory efficiency (buffer pre-allocation VecDeque::with_capacity; single payload clone in push path)
+  - [x] CPU overhead tuning (APERTURE_LOW_OVERHEAD=1: 49 Hz, 10s push interval; configurable push_interval)
+  - [x] Network optimization (gzip compression for gRPC when auth disabled; agent send/accept gzip)
 
 **Deliverables**:
 - Production-grade system

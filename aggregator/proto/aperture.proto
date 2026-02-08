@@ -8,11 +8,11 @@ service Aggregator {
   rpc Push(PushRequest) returns (PushResponse);
   // Query in-memory buffer (recent batches, by agent).
   rpc Query(QueryRequest) returns (QueryResponse);
-  // Query persistent storage (Phase 6: time-range, requires ClickHouse).
+  // Query persistent storage (time range, agent filter).
   rpc QueryStorage(QueryStorageRequest) returns (QueryResponse);
-  // Aggregate events across batches into merged profiles (Phase 6).
+  // Aggregate events across batches into merged profiles
   rpc Aggregate(AggregateRequest) returns (AggregateResponse);
-  // Differential profiling: compare two time windows or agents (Phase 6).
+  // Differential profiling: compare two time windows or agents.
   rpc Diff(DiffRequest) returns (DiffResponse);
 }
 
@@ -25,6 +25,7 @@ message PushRequest {
 message PushResponse {
   bool ok = 1;
   string error = 2;
+  bool backpressure = 3;  // true when buffer utilization > 80%
 }
 
 message QueryRequest {

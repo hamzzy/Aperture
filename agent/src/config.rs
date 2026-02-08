@@ -52,6 +52,10 @@ pub struct Config {
 
     /// Optional aggregator gRPC URL (e.g. http://127.0.0.1:50051) to push profile data
     pub aggregator_url: Option<String>,
+
+    /// Push interval in seconds when streaming to aggregator (None = library default, e.g. 5s).
+    /// Set via APERTURE_LOW_OVERHEAD=1 for lower CPU/network overhead (e.g. 10s).
+    pub push_interval_secs: Option<u64>,
 }
 
 impl Config {
@@ -61,6 +65,13 @@ impl Config {
             return 0;
         }
         1_000_000_000 / self.sample_rate_hz
+    }
+
+    /// Push interval for aggregator streaming (default 5s). Use for CPU/network overhead tuning.
+    pub fn push_interval(&self) -> Duration {
+        self.push_interval_secs
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(5))
     }
 
     /// Validate configuration
@@ -99,6 +110,7 @@ mod tests {
             json_output: None,
             filter_path: None,
             aggregator_url: None,
+            push_interval_secs: None,
         };
 
         assert_eq!(config.sample_period_ns(), 10_000_000);
@@ -115,6 +127,7 @@ mod tests {
             json_output: None,
             filter_path: None,
             aggregator_url: None,
+            push_interval_secs: None,
         };
 
         assert!(valid.validate().is_ok());
@@ -128,6 +141,7 @@ mod tests {
             json_output: None,
             filter_path: None,
             aggregator_url: None,
+            push_interval_secs: None,
         };
 
         assert!(invalid.validate().is_err());
@@ -144,6 +158,7 @@ mod tests {
             json_output: None,
             filter_path: None,
             aggregator_url: None,
+            push_interval_secs: None,
         };
         assert!(config.validate().is_err());
     }
@@ -159,6 +174,7 @@ mod tests {
             json_output: None,
             filter_path: None,
             aggregator_url: None,
+            push_interval_secs: None,
         };
         assert!(config.validate().is_ok());
     }
@@ -174,6 +190,7 @@ mod tests {
             json_output: None,
             filter_path: None,
             aggregator_url: None,
+            push_interval_secs: None,
         };
         assert!(config.validate().is_err());
     }
@@ -189,7 +206,30 @@ mod tests {
             json_output: None,
             filter_path: None,
             aggregator_url: None,
+            push_interval_secs: None,
         };
         assert_eq!(config.sample_period_ns(), 0);
+    }
+
+    #[test]
+    fn test_push_interval_default_and_override() {
+        let default_config = Config {
+            mode: ProfileMode::Cpu,
+            target_pid: None,
+            sample_rate_hz: 99,
+            duration: Duration::from_secs(10),
+            output_path: "out.svg".to_string(),
+            json_output: None,
+            filter_path: None,
+            aggregator_url: None,
+            push_interval_secs: None,
+        };
+        assert_eq!(default_config.push_interval(), Duration::from_secs(5));
+
+        let low_overhead_config = Config {
+            push_interval_secs: Some(10),
+            ..default_config.clone()
+        };
+        assert_eq!(low_overhead_config.push_interval(), Duration::from_secs(10));
     }
 }
