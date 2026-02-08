@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CpuTimelineChart } from "@/components/profiler/CpuTimelineChart";
 import { ProfileInsights } from "@/components/profiler/ProfileInsights";
-import { Flame, BarChart3, GitCompare, Shield, Database, Activity, Terminal } from "lucide-react";
+import { Flame, BarChart3, GitCompare, Shield, Database, Activity, Terminal, Download } from "lucide-react";
 import { usePhase8 } from "@/contexts/Phase8Context";
 import { useHealthQuery, useAggregateQuery, useBatchesQuery } from "@/api/queries";
 import { formatNs } from "@/lib/format";
@@ -342,6 +342,18 @@ export default function Dashboard() {
               Compare
             </span>
           </Link>
+          <a href="/api/export/json" download>
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground hover:bg-muted/50">
+              <Download className="h-3.5 w-3.5" />
+              Export JSON
+            </span>
+          </a>
+          <a href="/api/export/collapsed" download>
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground hover:bg-muted/50">
+              <Download className="h-3.5 w-3.5" />
+              Export Collapsed
+            </span>
+          </a>
         </div>
 
         <div className="rounded-md border border-border bg-card p-4">

@@ -415,6 +415,55 @@ pub async fn handle_api(
         return Ok(add_cors_headers(json_response(&body, StatusCode::OK)));
     }
 
+    // ── Export endpoints ──────────────────────────────────────────────────
+
+    // GET /api/export/json — download aggregated profile as JSON
+    if path == "/api/export/json" && method == hyper::Method::GET {
+        let mut event_type = None;
+        let mut limit = crate::MAX_AGGREGATE_BATCH_LIMIT;
+        if let Some(q) = req.uri().query() {
+            for part in q.split('&') {
+                if let Some((k, v)) = part.split_once('=') {
+                    match k {
+                        "event_type" => event_type = Some(v.to_string()),
+                        "limit" => {
+                            if let Ok(n) = v.parse::<u32>() {
+                                limit = n.min(crate::MAX_AGGREGATE_BATCH_LIMIT);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let res = crate::export::export_json(
+            buffer,
+            store.as_ref(),
+            event_type.as_deref(),
+            limit,
+        )
+        .await;
+        return Ok(res);
+    }
+
+    // GET /api/export/collapsed — download collapsed-stack format
+    if path == "/api/export/collapsed" && method == hyper::Method::GET {
+        let mut limit = crate::MAX_AGGREGATE_BATCH_LIMIT;
+        if let Some(q) = req.uri().query() {
+            for part in q.split('&') {
+                if let Some((k, v)) = part.split_once('=') {
+                    if k == "limit" {
+                        if let Ok(n) = v.parse::<u32>() {
+                            limit = n.min(crate::MAX_AGGREGATE_BATCH_LIMIT);
+                        }
+                    }
+                }
+            }
+        }
+        let res = crate::export::export_collapsed(buffer, store.as_ref(), limit).await;
+        return Ok(res);
+    }
+
     Ok(add_cors_headers(
         Response::builder()
             .status(StatusCode::NOT_FOUND)

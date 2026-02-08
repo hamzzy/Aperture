@@ -7,70 +7,123 @@
 
 ## Overview
 
-Aperture is a high-performance profiling system that uses eBPF for low-overhead performance monitoring. The project aims to provide CPU, GPU(WIP), lock contention, and syscall profiling in a distributed architecture.
+Aperture is a high-performance profiling system that uses eBPF for low-overhead performance monitoring. It supports CPU sampling, lock contention tracing, and syscall analysis in a distributed agent-aggregator architecture.
 
 <img src ="./intro.png"/>
 
-## Features (Planned)
+## Features
 
-- **CPU Profiling**: Continuous stack trace sampling with <1% overhead using eBPF
-- **Lock Contention**: Detect mutex/futex bottlenecks in production
-- **Syscall Tracing**: Latency histograms for system calls
-- **WASM Filters**: Programmable event filtering
-- **GPU Profiling**: CUDA kernel tracing and memory analysis
-- **Distributed Architecture**: Agent-aggregator model with scalable storage
+- **CPU Profiling** — Continuous stack trace sampling with <1% overhead using eBPF perf events
+- **Lock Contention** — Detect mutex/futex bottlenecks via tracepoint-based tracking
+- **Syscall Tracing** — Latency histograms and error analysis for all system calls
+- **Symbol Resolution** — Automatic kernel + userspace symbol resolution with blazesym
+- **Distributed Architecture** — Agent-aggregator model with gRPC transport and ClickHouse storage
+- **Web Dashboard** — Interactive flamegraphs, top functions, syscall analysis, differential profiling
+- **Alert Engine** — Configurable threshold alerts on buffer, error, and throughput metrics
+- **Data Export** — JSON and collapsed-stack format export for integration with external tools
+- **Prometheus Metrics** — Built-in `/metrics` endpoint for aggregator observability
+- **WASM Filters** — Programmable event filtering with WebAssembly (wasmtime)
+
+## Quick Start
+
+### Install from Source
+
+```bash
+git clone https://github.com/yourusername/aperture.git
+cd aperture
+cargo build --release --bin aperture-aggregator --bin aperture-cli
+```
+
+### Install from Release
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yourusername/aperture/main/scripts/install.sh | bash
+```
+
+### Docker
+
+```bash
+docker compose up -d    # Starts ClickHouse + Aggregator + Agent
+```
+
+### Run the Agent (Linux, requires root)
+
+```bash
+# CPU profiling (system-wide, 99 Hz, 30 seconds)
+sudo ./target/release/aperture-agent --mode cpu --duration 30s --freq 99
+
+# With aggregator push
+sudo ./target/release/aperture-agent --mode all --aggregator http://localhost:50051 --duration 24h
+
+# PID-filtered
+sudo ./target/release/aperture-agent --mode cpu --pid 1234 --duration 10s
+```
+
+### Run the Web UI
+
+```bash
+cd ui && npm install && npm run dev
+# Open http://localhost:5173 (proxies /api to aggregator at :9090)
+```
 
 ## Repository Structure
 
 ```
 aperture/
-├── agent/           # Main profiling agent
-├── agent-ebpf/      # eBPF programs (kernel space)
-├── shared/          # Common types and utilities
-├── cli/             # Command-line interface
-├── aggregator/      # Central aggregation service (future)
-├── wasm-runtime/    # WASM filter runtime (future)
-└── gpu-profiler/    # GPU profiling support (future)
+├── agent/              # Userspace profiling agent (loads eBPF, resolves symbols)
+├── agent-ebpf/         # eBPF programs (cpu-profiler, lock-profiler, syscall-tracer)
+├── shared/             # Shared types, wire protocol, utilities
+├── aggregator/         # Central aggregation service (gRPC + HTTP REST API)
+├── cli/                # CLI for querying aggregator (query, aggregate, diff)
+├── wasm-runtime/       # WASM filter runtime (wasmtime-based)
+├── gpu-profiler/       # GPU profiling support (CUDA/CUPTI, WIP)
+├── ui/                 # React web dashboard (Vite + Tailwind + shadcn/ui)
+├── deploy/k8s/         # Kubernetes manifests (DaemonSet + Deployment)
+├── scripts/            # Demo and setup scripts
+├── docs/               # Documentation
+│   ├── API-REFERENCE.md
+│   ├── ARCHITECTURE.md
+│   ├── SYMBOL-RESOLUTION.md
+│   ├── RUN-EXAMPLES.md
+│   └── roadmap.md
+├── docker-compose.yml  # Full-stack Docker setup
+├── Dockerfile.agent
+└── Dockerfile.aggregator
 ```
 
-## Prerequisites
+## Documentation
 
-- Linux kernel 5.8+ with BPF support
-- Rust 1.75+ (stable for userspace, nightly for eBPF programs)
-- LLVM 14+ and Clang
-- Linux headers for your kernel
-
-## Getting Started
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/aperture.git
-cd aperture
-
-# Build the workspace
-cargo build --workspace
-
-# Run tests
-cargo test --workspace
-
-# Check code quality
-cargo clippy --workspace --all-targets
-cargo fmt --check
-```
+- [Architecture Overview](docs/ARCHITECTURE.md) — System design, data flow, component details
+- [API Reference](docs/API-REFERENCE.md) — REST API endpoints, gRPC RPCs, Prometheus metrics
+- [Run Examples](docs/RUN-EXAMPLES.md) — Agent modes, Docker setup, CLI commands
+- [Symbol Resolution](docs/SYMBOL-RESOLUTION.md) — Debug symbol setup and troubleshooting
+- [Development Roadmap](docs/roadmap.md) — Phase-by-phase development plan
 
 ## Development
 
-This project is in early development. See [docs/roadmap.md](docs/roadmap.md) for the development plan.
+```bash
+# Build all workspace crates
+cargo build --workspace
 
-### Workspace Crates
+# Run tests
+cargo test -p aperture-agent -p aperture-aggregator -p aperture-shared -p aperture-cli -p aperture-wasm
 
-- **agent**: Main profiling agent that loads eBPF programs and collects performance data
-- **agent-ebpf**: eBPF programs compiled to BPF bytecode
-- **shared**: Common types, protocols, and utilities shared across crates
-- **cli**: Command-line interface for profiling operations
-- **aggregator**: Distributed aggregation service (future phase)
-- **wasm-runtime**: WASM-based event filtering (future phase)
-- **gpu-profiler**: GPU profiling capabilities (future phase)
+# Lint
+cargo clippy --workspace --all-targets
+cargo fmt --check
+
+# Build UI
+cd ui && npm run build
+```
+
+### Building eBPF Programs
+
+eBPF programs require nightly Rust and a Linux target:
+
+```bash
+cargo +nightly build -Zbuild-std=core --target bpfel-unknown-none \
+  --bin cpu-profiler --bin lock-profiler --bin syscall-tracer
+```
 
 ## Contributing
 
@@ -93,6 +146,9 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 
 Built with:
 
-- [Aya](https://aya-rs.dev/) - Rust eBPF library
-- [Tokio](https://tokio.rs/) - Async runtime
-- [Inferno](https://github.com/jonhoo/inferno) - Flamegraph generation
+- [Aya](https://aya-rs.dev/) — Rust eBPF library
+- [Tokio](https://tokio.rs/) — Async runtime
+- [wasmtime](https://wasmtime.dev/) — WebAssembly runtime
+- [Tonic](https://github.com/hyperium/tonic) — gRPC framework
+- [ClickHouse](https://clickhouse.com/) — Column-oriented storage
+- [Inferno](https://github.com/jonhoo/inferno) — Flamegraph generation

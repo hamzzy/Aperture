@@ -1,0 +1,41 @@
+# Aperture Agent - Multi-stage build
+# Requires privileged mode for eBPF: docker run --privileged --pid=host aperture-agent
+# Build: docker build -f Dockerfile.agent -t aperture-agent .
+
+FROM rust:1.77-bookworm AS builder
+
+# Install nightly for eBPF compilation
+RUN rustup install nightly && \
+    rustup component add rust-src --toolchain nightly
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock .cargo/ ./
+COPY .cargo/ .cargo/
+COPY shared/ shared/
+COPY agent/ agent/
+COPY agent-ebpf/ agent-ebpf/
+COPY aggregator/ aggregator/
+COPY cli/ cli/
+COPY wasm-runtime/ wasm-runtime/
+COPY gpu-profiler/ gpu-profiler/
+
+# Build eBPF programs first
+RUN cargo +nightly build -Zbuild-std=core --target bpfel-unknown-none \
+    --bin cpu-profiler --bin lock-profiler --bin syscall-tracer \
+    --release 2>/dev/null || true
+
+# Build userspace agent
+RUN cargo build --release --bin aperture-agent
+
+# Runtime image
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libc6-dbg && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/aperture-agent /usr/local/bin/aperture-agent
+COPY --from=builder /build/target/bpfel-unknown-none/release/ /opt/aperture/ebpf/ 2>/dev/null || true
+
+ENTRYPOINT ["aperture-agent"]
+CMD ["--mode", "cpu", "--duration", "24h"]

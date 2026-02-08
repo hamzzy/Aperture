@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: aperture-agent
+  namespace: aperture
+  labels:
+    app.kubernetes.io/name: agent
+    app.kubernetes.io/part-of: aperture
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent
+        app.kubernetes.io/part-of: aperture
+    spec:
+      hostPID: true
+      hostNetwork: true
+      containers:
+        - name: agent
+          image: aperture-agent:latest
+          args:
+            - "--aggregator"
+            - "http://aperture-aggregator.aperture.svc:50051"
+            - "--mode"
+            - "cpu"
+            - "--duration"
+            - "24h"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: sys-kernel-debug
+              mountPath: /sys/kernel/debug
+              readOnly: true
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: sys-kernel-debug
+          hostPath:
+            path: /sys/kernel/debug
+        - name: proc
+          hostPath:
+            path: /proc
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists

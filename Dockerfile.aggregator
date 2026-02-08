@@ -1,0 +1,34 @@
+# Aperture Aggregator - Multi-stage build
+# Build: docker build -f Dockerfile.aggregator -t aperture-aggregator .
+# Run:   docker run -p 9090:9090 -p 50051:50051 aperture-aggregator
+
+FROM rust:1.77-bookworm AS builder
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY shared/ shared/
+COPY aggregator/ aggregator/
+COPY agent-ebpf/ agent-ebpf/
+COPY agent/ agent/
+COPY cli/ cli/
+COPY wasm-runtime/ wasm-runtime/
+COPY gpu-profiler/ gpu-profiler/
+
+# Build aggregator with ClickHouse support
+RUN cargo build --release --bin aperture-aggregator --features clickhouse-storage
+
+# Runtime image
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates wget && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/aperture-aggregator /usr/local/bin/aperture-aggregator
+
+EXPOSE 9090 50051
+
+ENV APERTURE_ADMIN_LISTEN=0.0.0.0:9090
+ENV APERTURE_AGGREGATOR_LISTEN=0.0.0.0:50051
+
+ENTRYPOINT ["aperture-aggregator"]

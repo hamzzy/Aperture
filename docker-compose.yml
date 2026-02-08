@@ -1,6 +1,4 @@
-# Aperture: ClickHouse + Aggregator + Agent (Phase 6 / Phase 8)
 # Run: docker compose up -d
-# Then run the Phase 8 UI: cd gpu-whisperer-ui && npm run dev
 # API is at http://127.0.0.1:9090 (proxy from frontend /api)
 # Agent runs on Linux in Docker, pushes to aggregator → ClickHouse.
 

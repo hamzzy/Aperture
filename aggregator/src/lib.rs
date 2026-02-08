@@ -10,6 +10,7 @@ pub mod alerts;
 pub mod audit;
 pub mod buffer;
 pub mod config;
+pub mod export;
 pub mod metrics;
 pub mod server;
 pub mod storage;
