@@ -1,6 +1,6 @@
 # Aperture
 
-[![CI](https://github.com/yourusername/aperture/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/aperture/actions/workflows/ci.yml)
+[![CI](https://github.com/hamzzy/aperture/actions/workflows/ci.yml/badge.svg)](https://github.com/hamzzy/aperture/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-stable%20%2B%20nightly-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0%20OR%20MIT-blue.svg)](#license)
 
