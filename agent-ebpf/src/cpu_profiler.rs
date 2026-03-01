@@ -41,10 +41,7 @@ pub struct SampleEvent {
 
 #[perf_event]
 pub fn cpu_profiler(ctx: PerfEventContext) -> i64 {
-    match try_cpu_profiler(&ctx) {
-        Ok(ret) => ret,
-        Err(_) => 1,
-    }
+    try_cpu_profiler(&ctx).unwrap_or(1)
 }
 
 #[inline(always)]
