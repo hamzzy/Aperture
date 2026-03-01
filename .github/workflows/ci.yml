@@ -89,6 +89,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
       - uses: Swatinem/rust-cache@v2
       - name: Install cross-compilation tools
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -99,8 +102,7 @@ jobs:
         run: sudo apt-get install -y lld || true
       - name: Build eBPF programs
         run: |
-          # we don't actually ship these artifacts yet, but building ensures the
-          # repo compiles on nightly and exposes any regressions
+          # Build eBPF programs to catch regressions; outputs consumed by agent
           cargo +nightly build-ebpf --release
       - name: Build aggregator
         run: cargo build --release --bin aperture-aggregator --target ${{ matrix.target }}

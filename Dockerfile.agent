@@ -37,7 +37,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/aperture-agent /usr/local/bin/aperture-agent
-COPY --from=builder /build/target/bpfel-unknown-none/release/ /opt/aperture/ebpf/ 2>/dev/null || true
+RUN mkdir -p /opt/aperture/ebpf
+COPY --from=builder /build/target/bpfel-unknown-none/release/cpu-profiler /opt/aperture/ebpf/
+COPY --from=builder /build/target/bpfel-unknown-none/release/lock-profiler /opt/aperture/ebpf/
+COPY --from=builder /build/target/bpfel-unknown-none/release/syscall-tracer /opt/aperture/ebpf/
 
 ENTRYPOINT ["aperture-agent"]
 CMD ["--mode", "cpu", "--duration", "24h"]
