@@ -217,19 +217,6 @@ pub fn cleanup(links: PerfEventLinks) {
     drop(links);
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore] // Requires eBPF build artifacts
-    fn test_load_cpu_profiler() {
-        // This test requires the eBPF program to be built
-        let result = load_cpu_profiler();
-        assert!(result.is_err()); // Expected to fail until implemented
-    }
-}
-
 use aya::programs::raw_trace_point::RawTracePointLinkId;
 use aya::programs::trace_point::TracePointLinkId;
 use aya::programs::{RawTracePoint, TracePoint};
@@ -448,4 +435,17 @@ pub fn attach_syscall_tracer(
     }
 
     Ok(links)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore] // Requires eBPF build artifacts
+    fn test_load_cpu_profiler() {
+        // This test requires the eBPF program to be built
+        let result = load_cpu_profiler();
+        assert!(result.is_err()); // Expected to fail until implemented
+    }
 }

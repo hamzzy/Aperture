@@ -167,7 +167,7 @@ impl LockCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aperture_shared::types::profile::{Frame, Stack};
+    use aperture_shared::types::profile::Stack;
 
     #[test]
     fn test_lock_collector() {
