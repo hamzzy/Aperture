@@ -34,6 +34,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Install lld (for -fuse-ld=lld)
+        run: sudo apt-get install -y lld || true
+      - name: Build eBPF programs
+        run: cargo +nightly build-ebpf --release
       - name: Build aggregator
         run: cargo build --release --bin aperture-aggregator --target ${{ matrix.target }}
         env:
@@ -41,11 +50,15 @@ jobs:
       - name: Build CLI
         if: matrix.build_cli
         run: cargo build --release --bin aperture --target ${{ matrix.target }}
+      - name: Build agent
+        if: matrix.build_cli
+        run: cargo build --release --bin aperture-agent --target ${{ matrix.target }}
       - name: Package
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/aperture-aggregator dist/ 2>/dev/null || true
           cp target/${{ matrix.target }}/release/aperture dist/ 2>/dev/null || true
+          cp target/${{ matrix.target }}/release/aperture-agent dist/ 2>/dev/null || true
           tar czf ${{ matrix.artifact }}.tar.gz -C dist .
       - uses: actions/upload-artifact@v4
         with:

@@ -126,7 +126,6 @@ pub fn load_cpu_profiler() -> Result<Ebpf> {
         anyhow::bail!(
             "CPU profiler eBPF program not found; build with `cargo +nightly build-ebpf` or enable `embed-bpf` feature"
         );
-        
     }
 }
 

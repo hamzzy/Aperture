@@ -20,9 +20,10 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
-        run: cargo fmt --all --check
+        run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy -p aperture-aggregator -p aperture-shared -p aperture-cli -p aperture-wasm --all-targets -- -D warnings
+        # run on the entire workspace so agent and other crates are included
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: Test
@@ -32,7 +33,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        run: cargo test -p aperture-aggregator -p aperture-shared -p aperture-cli -p aperture-wasm
+        # exercise all workspace crates except eBPF (build tool)
+        run: cargo test --workspace --exclude agent-ebpf
 
   ui:
     name: UI Build
@@ -77,9 +79,11 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             artifact: aperture-linux-amd64
             build_cli: true
+            build_agent: true
           - target: aarch64-unknown-linux-gnu
             artifact: aperture-linux-arm64
             build_cli: false
+            build_agent: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -91,6 +95,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Install lld (needed for -fuse-ld=lld)
+        run: sudo apt-get install -y lld || true
+      - name: Build eBPF programs
+        run: |
+          # we don't actually ship these artifacts yet, but building ensures the
+          # repo compiles on nightly and exposes any regressions
+          cargo +nightly build-ebpf --release
       - name: Build aggregator
         run: cargo build --release --bin aperture-aggregator --target ${{ matrix.target }}
         env:
@@ -98,11 +109,15 @@ jobs:
       - name: Build CLI
         if: matrix.build_cli
         run: cargo build --release --bin aperture --target ${{ matrix.target }}
+      - name: Build agent
+        if: matrix.build_agent
+        run: cargo build --release --bin aperture-agent --target ${{ matrix.target }}
       - name: Package
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/aperture-aggregator dist/ 2>/dev/null || true
           cp target/${{ matrix.target }}/release/aperture dist/ 2>/dev/null || true
+          cp target/${{ matrix.target }}/release/aperture-agent dist/ 2>/dev/null || true
           tar czf ${{ matrix.artifact }}.tar.gz -C dist .
       - uses: actions/upload-artifact@v4
         with:
