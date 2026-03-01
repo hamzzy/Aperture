@@ -69,6 +69,63 @@ orb run -m ubuntu -w /Users/user/aperture -u root bash -c '\
     --mode cpu --duration 24h'
 ```
 
+## Run a Python program in OrbStack and capture data to Aperture
+
+You can run a Python program in the OrbStack VM. Aperture does **not** ingest application logs (stdout/stderr); it **profiles** processes (CPU stacks, lock contention, syscalls) and sends that data to the aggregator. You can still keep your program's logs separately.
+
+### 1. Start the backend on your Mac
+
+```bash
+docker compose up -d clickhouse aggregator
+cd ui && npm run dev
+# Open http://localhost:8080
+```
+
+### 2. Run your Python program in the OrbStack VM
+
+```bash
+orb run -m ubuntu -w /path/to/your/app bash -c 'python3 -u your_script.py'
+```
+
+To **capture stdout/stderr to a file** (your own logs):
+
+```bash
+orb run -m ubuntu -w /path/to/your/app bash -c 'python3 -u your_script.py 2>&1 | tee app.log'
+```
+
+### 3. Profile the Python process with Aperture
+
+Run the agent in the **same VM** with the Python process **PID** so only that process is profiled:
+
+```bash
+# Run the agent for 5 minutes, targeting PID 12345, pushing to aggregator on Mac
+orb run -m ubuntu -w /path/to/aperture -u root bash -c '\
+  sudo ./target/release/aperture-agent --mode cpu --pid 12345 --duration 5m \
+  --aggregator http://host.orb.internal:50051'
+```
+
+Or start the agent in the background (no `--pid` to profile all processes), then run Python:
+
+```bash
+orb run -m ubuntu -w /path/to/aperture bash -c '
+  sudo ./target/release/aperture-agent --aggregator http://host.orb.internal:50051 \
+    --mode cpu --duration 10m &
+  sleep 2
+  python3 -u /path/to/your/script.py 2>&1 | tee app.log
+  wait'
+```
+
+### 4. View the data in Aperture
+
+- **Profile data**: Open the Web UI (http://localhost:8080). Use the dashboard, flamegraph, top functions, and syscalls views for the time range when the Python process was running.
+- **Application logs**: Your Python stdout/stderr are in the file you used (`app.log`). Aperture does not store those; keep that file or pipe it to your own logging system.
+
+| Goal | How |
+|------|-----|
+| Run Python in OrbStack | `orb run -m ubuntu -w /path bash -c 'python3 your_script.py'` |
+| Profile it with Aperture | Run the agent in the same VM with `--pid <python_pid>`, aggregator at `http://host.orb.internal:50051`. |
+| Capture stdout/stderr | Redirect in the VM: `2>&1 \| tee app.log` or `> app.log 2>&1`. |
+
 ## Docker (Full Stack)
 
 From the repository root:

@@ -101,17 +101,32 @@ pub fn load_cpu_profiler() -> Result<Ebpf> {
                 return Ok(bpf);
             }
         }
-        // Fallback: embedded bytecode (aligned for ELF parsing)
-        let bpf_data = aya::include_bytes_aligned!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../target/bpfel-unknown-none/release/cpu-profiler"
-        ));
-        let bpf = EbpfLoader::new()
-            .allow_unsupported_maps()
-            .load(bpf_data)
-            .context("Failed to load eBPF program")?;
-        info!("Successfully loaded CPU profiler eBPF program (embedded)");
-        Ok(bpf)
+        // Fallback: embedded bytecode (aligned for ELF parsing).
+        // The embedded blob is only required when the `embed-bpf` feature
+        // is enabled.  CI and developer builds that haven’t produced the
+        // `agent-ebpf` artifacts should either run `cargo +nightly build-ebpf`
+        // beforehand or set `APERTURE_EBPF_CPU_PROFILER` to a valid path.  If
+        // neither is true and the feature is disabled we return an error rather
+        // than failing at compile time with a missing file.
+        #[cfg(feature = "embed-bpf")]
+        {
+            let bpf_data = aya::include_bytes_aligned!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../target/bpfel-unknown-none/release/cpu-profiler"
+            ));
+            let bpf = EbpfLoader::new()
+                .allow_unsupported_maps()
+                .load(bpf_data)
+                .context("Failed to load eBPF program")?;
+            info!("Successfully loaded CPU profiler eBPF program (embedded)");
+            return Ok(bpf);
+        }
+
+        #[cfg(not(feature = "embed-bpf"))]
+        anyhow::bail!(
+            "CPU profiler eBPF program not found; build with `cargo +nightly build-ebpf` or enable `embed-bpf` feature"
+        );
+        
     }
 }
 
@@ -281,14 +296,22 @@ pub fn load_lock_profiler() -> Result<Ebpf> {
 
     #[cfg(not(debug_assertions))]
     {
-        let bpf_data = aya::include_bytes_aligned!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../target/bpfel-unknown-none/release/lock-profiler"
-        ));
-        EbpfLoader::new()
-            .allow_unsupported_maps()
-            .load(bpf_data)
-            .context("Failed to load lock profiler")
+        #[cfg(feature = "embed-bpf")]
+        {
+            let bpf_data = aya::include_bytes_aligned!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../target/bpfel-unknown-none/release/lock-profiler"
+            ));
+            return EbpfLoader::new()
+                .allow_unsupported_maps()
+                .load(bpf_data)
+                .context("Failed to load lock profiler");
+        }
+
+        #[cfg(not(feature = "embed-bpf"))]
+        anyhow::bail!(
+            "Lock profiler eBPF program not found; build it or enable `embed-bpf` feature"
+        );
     }
 
     // Fallback for debug if file not found
@@ -359,14 +382,22 @@ pub fn load_syscall_tracer() -> Result<Ebpf> {
 
     #[cfg(not(debug_assertions))]
     {
-        let bpf_data = aya::include_bytes_aligned!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../target/bpfel-unknown-none/release/syscall-tracer"
-        ));
-        EbpfLoader::new()
-            .allow_unsupported_maps()
-            .load(bpf_data)
-            .context("Failed to load syscall tracer")
+        #[cfg(feature = "embed-bpf")]
+        {
+            let bpf_data = aya::include_bytes_aligned!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../target/bpfel-unknown-none/release/syscall-tracer"
+            ));
+            return EbpfLoader::new()
+                .allow_unsupported_maps()
+                .load(bpf_data)
+                .context("Failed to load syscall tracer");
+        }
+
+        #[cfg(not(feature = "embed-bpf"))]
+        anyhow::bail!(
+            "Syscall tracer eBPF program not found; build it or enable `embed-bpf` feature"
+        );
     }
 
     #[cfg(debug_assertions)]

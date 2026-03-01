@@ -143,17 +143,28 @@ cargo build --release --bin aperture-cli
 
 ### eBPF programs
 
-eBPF programs require nightly and must target `bpfel-unknown-none`:
+eBPF programs require nightly and must target `bpfel-unknown-none`.
+The generated object files live under `target/bpfel-unknown-none/{debug,release}`
+and are consumed by the user‑space agent at runtime.  The agent can either
+load them from disk or – if you compile with the `embed-bpf` feature –
+include them in the binary.
+
+Build the eBPF binaries before attempting to build the agent itself:
 
 ```bash
+# directly with cargo
 cargo +nightly build -Zbuild-std=core --target bpfel-unknown-none \
   --bin cpu-profiler --bin lock-profiler --bin syscall-tracer
+
+# or via the alias defined in .cargo/config.toml
+cargo +nightly build-ebpf --release
 ```
 
-Or use the cargo alias:
+By default the agent will look for the compiled programs on disk; to
+embed them add `--features embed-bpf` when you build the agent:
 
 ```bash
-cargo +nightly build-ebpf
+cargo build --release --features embed-bpf
 ```
 
 ### Web dashboard

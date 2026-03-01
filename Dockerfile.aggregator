@@ -2,7 +2,7 @@
 # Build: docker build -f Dockerfile.aggregator -t aperture-aggregator .
 # Run:   docker run -p 9090:9090 -p 50051:50051 aperture-aggregator
 
-FROM rust:1.79-bookworm AS builder
+FROM rust:latest-bookworm AS builder
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./

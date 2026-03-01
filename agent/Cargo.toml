@@ -56,3 +56,15 @@ num_cpus = "1.16"
 [dev-dependencies]
 tempfile = "3.8"
 tokio-test = "0.4"
+
+[features]
+# If enabled the compiled eBPF object files from `agent-ebpf` are
+# embedded into the agent binary at build time.  Building with this
+# feature requires the BPF targets to have already been compiled in
+# `../target/bpfel-unknown-none/release` (see CONTRIBUTING.md).
+# The feature is intentionally off by default so that developers and
+# CI jobs can build the agent without first constructing the eBPF
+# artifacts.  When disabled the agent will only attempt to load the
+# programs from disk or from the path configured via
+# `APERTURE_EBPF_*` env vars.
+embed-bpf = []
