@@ -66,6 +66,7 @@ lto = "fat"
 codegen-units = 1
 strip = false
 debug = true
+panic = "abort"
 
 [profile.bench]
 inherits = "release"

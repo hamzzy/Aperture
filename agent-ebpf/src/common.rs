@@ -15,7 +15,6 @@ pub const BPF_F_REUSE_STACKID: u64 = 1 << 10;
 /// PID filtering is now done via TARGET_PID BPF Array maps in each
 /// eBPF program (lock_profiler, syscall_tracer). CPU profiling uses
 /// perf_event_open scope for PID filtering instead.
-
 /// Futex operations
 pub const FUTEX_WAIT: u32 = 0;
 pub const FUTEX_LOCK_PI: u32 = 6;
