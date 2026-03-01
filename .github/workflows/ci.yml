@@ -34,7 +34,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
         # exercise all workspace crates except eBPF (build tool)
-        run: cargo test --workspace --exclude agent-ebpf
+        run: cargo test --workspace --exclude aperture-ebpf
 
   ui:
     name: UI Build

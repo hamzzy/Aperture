@@ -173,6 +173,7 @@ fn try_sys_exit_futex(ctx: &TracePointContext) -> Result<i64, i64> {
     Ok(0)
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }

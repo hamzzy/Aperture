@@ -158,6 +158,7 @@ fn try_sys_exit(ctx: &RawTracePointContext) -> Result<i32, i64> {
     Ok(0)
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }

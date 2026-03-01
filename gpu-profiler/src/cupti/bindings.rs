@@ -12,6 +12,6 @@
 
 // Placeholder types
 pub type CUptiResult = u32;
-pub type CUpti_SubscriberHandle = *mut std::ffi::c_void;
+pub type CuptiSubscriberHandle = *mut std::ffi::c_void;
 
 pub const CUPTI_SUCCESS: CUptiResult = 0;
