@@ -22,8 +22,8 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
       - name: Clippy
-        # run on the entire workspace so agent and other crates are included
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        # aperture-ebpf is no_std/bpf-target only; skip it in the stable check job
+        run: cargo clippy --workspace --all-targets --exclude aperture-ebpf -- -D warnings
 
   test:
     name: Test

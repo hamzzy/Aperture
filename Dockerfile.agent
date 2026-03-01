@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/* && \
     rustup install nightly && \
     rustup component add rust-src --toolchain nightly && \
-    cargo install bpf-linker
+    cargo +nightly install bpf-linker
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
