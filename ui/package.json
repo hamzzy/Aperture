@@ -93,5 +93,8 @@
     "postcss-selector-parser": "7.1.1",
     "picomatch": "4.0.3",
     "dequal": "2.0.3"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.24.4"
   }
 }

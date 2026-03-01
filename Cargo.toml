@@ -60,6 +60,9 @@ prometheus = "0.13"
 config = "0.13"
 toml = "0.8"
 
+[profile.dev]
+panic = "abort"
+
 [profile.release]
 opt-level = 3
 lto = "fat"
