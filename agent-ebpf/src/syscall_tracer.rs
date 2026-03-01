@@ -80,10 +80,7 @@ fn should_trace() -> bool {
 
 #[raw_tracepoint(tracepoint = "sys_enter")]
 pub fn sys_enter(ctx: RawTracePointContext) -> i32 {
-    match try_sys_enter(&ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_sys_enter(&ctx).unwrap_or_default()
 }
 
 fn try_sys_enter(ctx: &RawTracePointContext) -> Result<i32, i64> {
@@ -113,10 +110,7 @@ fn try_sys_enter(ctx: &RawTracePointContext) -> Result<i32, i64> {
 
 #[raw_tracepoint(tracepoint = "sys_exit")]
 pub fn sys_exit(ctx: RawTracePointContext) -> i32 {
-    match try_sys_exit(&ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_sys_exit(&ctx).unwrap_or_default()
 }
 
 fn try_sys_exit(ctx: &RawTracePointContext) -> Result<i32, i64> {

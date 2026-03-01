@@ -86,10 +86,7 @@ fn should_trace() -> bool {
 
 #[tracepoint(name = "sys_enter_futex", category = "syscalls")]
 pub fn sys_enter_futex(ctx: TracePointContext) -> i64 {
-    match try_sys_enter_futex(&ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_sys_enter_futex(&ctx).unwrap_or_default()
 }
 
 fn try_sys_enter_futex(ctx: &TracePointContext) -> Result<i64, i64> {
@@ -123,10 +120,7 @@ fn try_sys_enter_futex(ctx: &TracePointContext) -> Result<i64, i64> {
 
 #[tracepoint(name = "sys_exit_futex", category = "syscalls")]
 pub fn sys_exit_futex(ctx: TracePointContext) -> i64 {
-    match try_sys_exit_futex(&ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_sys_exit_futex(&ctx).unwrap_or_default()
 }
 
 fn try_sys_exit_futex(ctx: &TracePointContext) -> Result<i64, i64> {
