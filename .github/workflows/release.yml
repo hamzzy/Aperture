@@ -67,38 +67,38 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.tar.gz
 
-  publish:
-    name: Publish to crates.io
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Publish aperture-shared
-        run: cargo publish -p aperture-shared --no-verify
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Publish aperture-agent
-        run: cargo publish -p aperture-agent --no-verify
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Publish aperture-aggregator
-        run: cargo publish -p aperture-aggregator --no-verify
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Publish aperture (CLI)
-        run: cargo publish -p aperture-cli --no-verify
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Publish aperture-wasm
-        run: cargo publish -p aperture-wasm --no-verify
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Publish aperture-gpu
-        run: cargo publish -p aperture-gpu --no-verify
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  # publish:
+  #   name: Publish to crates.io
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - uses: Swatinem/rust-cache@v2
+  #     - name: Publish aperture-shared
+  #       run: cargo publish -p aperture-shared --no-verify
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  #     - name: Publish aperture-agent
+  #       run: cargo publish -p aperture-agent --no-verify
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  #     - name: Publish aperture-aggregator
+  #       run: cargo publish -p aperture-aggregator --no-verify
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  #     - name: Publish aperture (CLI)
+  #       run: cargo publish -p aperture-cli --no-verify
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  #     - name: Publish aperture-wasm
+  #       run: cargo publish -p aperture-wasm --no-verify
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  #     - name: Publish aperture-gpu
+  #       run: cargo publish -p aperture-gpu --no-verify
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release:
     name: Create Release
