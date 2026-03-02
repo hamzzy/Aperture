@@ -6,11 +6,11 @@ FROM rust:bookworm AS builder
 
 # Install nightly and deps for eBPF compilation (bpf-linker needs LLVM)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    llvm libclang-dev clang && \
+    llvm libclang-dev clang lld && \
     rm -rf /var/lib/apt/lists/* && \
     rustup install nightly && \
     rustup component add rust-src --toolchain nightly && \
-    cargo +nightly install bpf-linker
+    cargo +nightly install --git https://github.com/aya-rs/bpf-linker bpf-linker
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./

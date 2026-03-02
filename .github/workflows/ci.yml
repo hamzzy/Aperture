@@ -103,7 +103,7 @@ jobs:
       - name: Install bpf-linker deps and bpf-linker
         run: |
           sudo apt-get install -y llvm libclang-dev clang
-          cargo +nightly install bpf-linker
+          cargo +nightly install --git https://github.com/aya-rs/bpf-linker bpf-linker
       - name: Build eBPF programs
         run: |
           # Build eBPF programs to catch regressions; outputs consumed by agent

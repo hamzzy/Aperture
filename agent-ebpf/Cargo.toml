@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "eBPF programs for Aperture"
+publish = false
 
 [dependencies]
 aya-ebpf = "0.1.1"
