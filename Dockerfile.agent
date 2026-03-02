@@ -2,7 +2,7 @@
 # Requires privileged mode for eBPF: docker run --privileged --pid=host aperture-agent
 # Build: docker build -f Dockerfile.agent -t aperture-agent .
 
-FROM rust:1.79-bookworm AS builder
+FROM rust:bookworm AS builder
 
 # Install nightly and deps for eBPF compilation (bpf-linker needs LLVM)
 RUN apt-get update && apt-get install -y --no-install-recommends \

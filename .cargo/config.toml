@@ -21,4 +21,4 @@ rustflags = [
 [alias]
 # Useful cargo aliases
 xtask = "run --package xtask --"
-build-ebpf = "build --package agent-ebpf --target bpfel-unknown-none -Z build-std=core"
+build-ebpf = "build --package aperture-ebpf --target bpfel-unknown-none -Z build-std=core"
